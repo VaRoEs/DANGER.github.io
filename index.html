@@ -121,7 +121,6 @@
         <!-- ЭКРАН ЗВОНКА (Здесь работает Metered) -->
         <div id="callScreen">
             <div id="metered-frame"></div>
-            <!-- Кнопка поверх видеочата, чтобы вернуться назад -->
             <button class="btn-leave-wrapper" id="leaveCallBtn">Выйти из звонка</button>
         </div>
 
@@ -153,94 +152,135 @@
         }
         document.getElementById('myIdDisplay').textContent = myId;
 
+        // ВАЖНО: Очищаем зависшие статусы в базе при загрузке
+        db.ref(`calls/${myId}`).remove();
+
         // --- 3. ЛОГИКА ИНТЕРФЕЙСА ---
+        let inCall = false; // Статус: разговариваем мы сейчас или нет
+        let currentCallRef = null;
+
         function updateStatus(msg, type = '') {
             const el = document.getElementById('status');
             el.textContent = msg;
             el.className = 'status ' + type;
         }
 
-        let currentCallRef = null;
+        function resetCallButton() {
+            const btn = document.getElementById('connectBtn');
+            btn.textContent = 'Позвонить';
+            btn.style.background = '#22c55e';
+            btn.onclick = initiateCall;
+        }
 
-        // СЛУШАЕМ ВХОДЯЩИЕ ЗВОНКИ
+        // --- 4. СЛУШАЕМ ВХОДЯЩИЕ ЗВОНКИ ---
         db.ref(`calls/${myId}`).on('value', snapshot => {
             const data = snapshot.val();
             
-            // Если нам звонят
             if (data && data.status === 'ringing') {
+                if (inCall) {
+                    // Если мы уже разговариваем - отдаем статус "Занято" (отклонено)
+                    db.ref(`calls/${myId}`).update({ status: 'rejected' });
+                    return;
+                }
+                
+                // Показываем окно входящего вызова
                 document.getElementById('callerIdDisplay').textContent = data.callerId;
                 document.getElementById('incomingCall').classList.add('active');
+                updateStatus('📞 Входящий вызов...', 'warning');
             } 
-            // Если звонящий сбросил вызов
-            else if (data && data.status === 'hangup') {
+            else {
+                // Если звонящий отменил вызов (узел пропал или статус изменился)
                 document.getElementById('incomingCall').classList.remove('active');
-                updateStatus('Звонок отменен', 'warning');
-                setTimeout(() => updateStatus('🔥 В сети. Ожидание вызовов...', 'success'), 2000);
-                db.ref(`calls/${myId}`).remove();
+                if (!inCall) {
+                    updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
+                }
             }
         });
 
-        // КНОПКА "ПОЗВОНИТЬ"
-        document.getElementById('connectBtn').onclick = () => {
+        // --- 5. ФУНКЦИЯ ИСХОДЯЩЕГО ЗВОНКА ---
+        function initiateCall() {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId || remoteId.length !== 4) {
                 return alert('Введи 4 цифры ID друга');
             }
             
-            updateStatus('Звоним...', 'warning');
+            inCall = true;
+            updateStatus('Дозвон...', 'warning');
             
-            // Отправляем сигнал звонка в базу друга
+            // Превращаем кнопку "Позвонить" в кнопку "Отменить"
+            const btn = document.getElementById('connectBtn');
+            btn.textContent = 'Отменить вызов';
+            btn.style.background = '#ef4444';
+            
             currentCallRef = db.ref(`calls/${remoteId}`);
             currentCallRef.set({ callerId: myId, status: 'ringing' });
 
-            // Слушаем, ответит друг или отклонит
+            // Логика отмены вызова
+            btn.onclick = () => {
+                currentCallRef.remove(); // Удаляем вызов у друга
+                currentCallRef.off();    // Отписываемся от прослушивания
+                inCall = false;
+                resetCallButton();
+                updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
+            };
+
+            // Ждем ответа от друга
             currentCallRef.on('value', snapshot => {
                 const data = snapshot.val();
                 if (data && data.status === 'answered') {
-                    // Друг ответил — запускаем видео
+                    // Друг ответил
                     currentCallRef.off();
+                    currentCallRef.remove(); // Чистим базу перед входом в комнату
                     startMeteredCall();
                 } else if (data && data.status === 'rejected') {
-                    // Друг сбросил
+                    // Друг сбросил или занят
                     currentCallRef.off();
-                    updateStatus('Вызов отклонен', 'warning');
+                    inCall = false;
+                    resetCallButton();
+                    updateStatus('Вызов отклонен или занято', 'warning');
                     setTimeout(() => updateStatus('🔥 В сети. Ожидание вызовов...', 'success'), 3000);
                 }
             });
-        };
+        }
 
-        // КНОПКА "ПРИНЯТЬ" (Для входящих)
+        // Привязываем функцию к кнопке
+        document.getElementById('connectBtn').onclick = initiateCall;
+
+        // --- 6. КНОПКИ ПРИНЯТЬ/ОТКЛОНИТЬ ВХОДЯЩИЙ ---
         document.getElementById('answerBtn').onclick = () => {
+            inCall = true;
             document.getElementById('incomingCall').classList.remove('active');
+            
             // Сообщаем звонящему, что мы приняли вызов
             db.ref(`calls/${myId}`).update({ status: 'answered' });
             startMeteredCall(); // Запускаем видео
         };
 
-        // КНОПКА "ОТКЛОНИТЬ" (Для входящих)
         document.getElementById('rejectBtn').onclick = () => {
             document.getElementById('incomingCall').classList.remove('active');
-            // Сообщаем звонящему об отказе и чистим базу
+            
+            // Сообщаем звонящему об отказе
             db.ref(`calls/${myId}`).update({ status: 'rejected' });
-            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000);
+            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000); // Чистим базу
+            updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
         };
 
-        // --- 4. ЗАПУСК METERED SDK ---
+        // --- 7. ЗАПУСК METERED SDK ---
         function startMeteredCall() {
             // Прячем меню, показываем экран звонка
             document.getElementById('menuScreen').style.display = 'none';
             document.getElementById('callScreen').style.display = 'block';
             
-            // Инициализируем Metered Frame (он сам запросит камеру и микрофон)
             var frame = new MeteredFrame(); 
             frame.init({
-                roomURL: "skype777.metered.live/78", // Твоя комната
+                roomURL: "skype777.metered.live/78", // Твоя комната Metered
             }, document.getElementById("metered-frame"));
         }
 
-        // --- 5. ВЫХОД ИЗ ЗВОНКА ---
-        // Самый надежный способ очистить сессию Metered и вернуть UI — перезагрузить страницу
+        // --- 8. ВЫХОД ИЗ ЗВОНКА ---
         document.getElementById('leaveCallBtn').onclick = () => {
+            // Удаляем возможные следы в базе перед выходом
+            db.ref(`calls/${myId}`).remove(); 
             window.location.reload(); 
         };
 
