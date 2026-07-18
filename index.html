@@ -169,7 +169,7 @@
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
             <button class="glossy-btn" id="connectBtn" style="margin-bottom: 10px;">📞 Позвонить</button>
-            <!-- Кнопка для включения камеры (лицо) даже без запроса разрешения, показываем локальное превью -->
+            <!-- Кнопка для включения камеры (лицо) -->
             <button class="glossy-btn" id="cameraToggleBtn" style="font-size: 13px; margin-bottom:10px;">📷 Включить камеру (лицо)</button>
             
             <div class="incoming-box" id="incomingCall">
@@ -222,6 +222,7 @@
         let activeRemoteId = null; 
         let localStream = null;     // поток с камеры (лицо)
         let isCameraOn = false;
+        let meteredFrameInstance = null;
 
         // --- 3. ИНТЕРФЕЙС ---
         function updateStatus(msg, type = 'success') {
@@ -263,7 +264,7 @@
                 callRef.remove(); callRef.off(); inCall = false; activeRemoteId = null;
                 btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
                 updateStatus('В сети', 'success');
-                stopLocalCamera(); // выключаем камеру при отмене
+                stopLocalCamera();
             };
 
             callRef.on('value', snap => {
@@ -294,17 +295,10 @@
             stopLocalCamera();
         };
 
-        // --- 7. METERED SDK (WebRTC, 60 FPS) + локальная камера (лицо) ---
-        let meteredFrameInstance = null;
-
+        // --- 7. METERED SDK (WebRTC, 60 FPS) + локальная камера ---
         function startMeteredCall() {
             document.getElementById('mainWindow').style.display = 'none';
             document.getElementById('callScreen').style.display = 'block';
-            
-            // Если камера уже включена — передаём её в Metered, иначе — без камеры (только аудио если нужно)
-            // По умолчанию requireCamera: false, но если isCameraOn — мы всё равно передадим стрим через custom stream?
-            // Metered SDK позволяет передать свой MediaStream через опцию stream.
-            // Сделаем так: если камера включена — используем её.
             
             let options = {
                 roomURL: "skype777.metered.live/78",
@@ -314,17 +308,15 @@
             
             // Если камера включена — передаём свой стрим
             if (isCameraOn && localStream) {
-                options.stream = localStream; // передаём локальный стрим с видео
-                // также включаем микрофон если есть (но по умолчанию false)
-                // Мы добавим аудио, если оно есть в стриме
+                options.stream = localStream;
                 if (localStream.getAudioTracks().length > 0) {
-                    options.requireMicrophone = true; // но stream уже содержит аудио
+                    options.requireMicrophone = true;
                 }
             }
             
-            var frame = new MeteredFrame(); 
-            meteredFrameInstance = frame;
-            frame.init(options, document.getElementById("metered-frame"));
+            // Создаём экземпляр Metered
+            meteredFrameInstance = new MeteredFrame(); 
+            meteredFrameInstance.init(options, document.getElementById("metered-frame"));
 
             // Показываем локальное превью если камера включена
             if (isCameraOn && localStream) {
@@ -335,10 +327,10 @@
             }
         }
 
-        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (лицо) с принудительным включением даже без разрешения (показываем заглушку если нет доступа) ---
+        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (с принудительным показом даже без камеры) ---
         async function startLocalCamera() {
             try {
-                // Пытаемся получить доступ к камере
+                // Пытаемся получить реальную камеру
                 let constraints = { video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }, audio: false };
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 isCameraOn = true;
@@ -346,52 +338,52 @@
                 document.getElementById('cameraToggleBtn').classList.add('red');
                 
                 // Если звонок уже активен, обновляем стрим в Metered
-                if (meteredFrameInstance && inCall) {
-                    // Переинициализируем с новым стримом (или можно заменить треки)
-                    // Проще перезапустить звонок? Но мы пересоздадим frame
-                    // Однако для простоты — перезапустим вызов (но это не идеально)
-                    // В реальном приложении нужно заменить треки, но Metered SDK не предоставляет прямого метода.
-                    // Поэтому при включении камеры во время звонка — перезапускаем сессию.
-                    // Это костыль, но для демо сойдёт.
-                    if (inCall && activeRemoteId) {
-                        // Перезапускаем сессию Metered с новым стримом
-                        document.getElementById('metered-frame').innerHTML = ''; // очищаем
-                        let options = {
-                            roomURL: "skype777.metered.live/78",
-                            requireCamera: false,
-                            requireMicrophone: false,
-                            stream: localStream
-                        };
-                        meteredFrameInstance = new MeteredFrame();
-                        meteredFrameInstance.init(options, document.getElementById("metered-frame"));
-                        document.getElementById('localPreview').srcObject = localStream;
-                        document.getElementById('localPreview').style.display = 'block';
-                    }
+                if (inCall && meteredFrameInstance) {
+                    // Перезапускаем сессию Metered с новым стримом
+                    document.getElementById('metered-frame').innerHTML = '';
+                    let options = {
+                        roomURL: "skype777.metered.live/78",
+                        requireCamera: false,
+                        requireMicrophone: false,
+                        stream: localStream
+                    };
+                    meteredFrameInstance = new MeteredFrame();
+                    meteredFrameInstance.init(options, document.getElementById("metered-frame"));
+                    document.getElementById('localPreview').srcObject = localStream;
+                    document.getElementById('localPreview').style.display = 'block';
                 }
                 
-                // Показываем превью (если звонок ещё не активен, показываем превью в главном окне?)
-                // Но у нас превью только на экране звонка. Поэтому если не в звонке — просто включаем камеру "в фоне"
                 if (!inCall) {
-                    // Можно показать превью в маленьком окошке, но у нас оно скрыто. Просто запоминаем.
                     updateStatus('Камера включена (ожидание вызова)', 'success');
                 }
             } catch (e) {
-                alert('Не удалось получить доступ к камере. Будет использован виртуальный источник (заглушка).');
-                // Создаём виртуальный поток (canvas) как заглушку
+                console.warn('Реальная камера недоступна, используем виртуальную заглушку');
+                // СОЗДАЁМ ВИРТУАЛЬНЫЙ ПОТОК (canvas) — он будет виден на компьютере без камеры!
                 const canvas = document.createElement('canvas');
                 canvas.width = 320; canvas.height = 240;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#003399';
-                ctx.fillRect(0,0,320,240);
-                ctx.fillStyle = '#fff';
-                ctx.font = '20px Segoe UI';
-                ctx.fillText('📷 Нет камеры', 80, 120);
-                // Генерируем поток из canvas
+                // Рисуем динамическую заглушку с текстом и анимацией
+                let frame = 0;
+                function drawFrame() {
+                    ctx.fillStyle = '#003399';
+                    ctx.fillRect(0, 0, 320, 240);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '24px Segoe UI';
+                    ctx.fillText('📷 Виртуальная камера', 40, 100);
+                    ctx.font = '18px Segoe UI';
+                    ctx.fillText('ID: ' + myId, 100, 150);
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.fillRect(10, 180, 20 + frame % 60, 20);
+                    frame++;
+                }
+                setInterval(drawFrame, 100);
+                // Создаём поток из canvas (30 FPS)
                 const stream = canvas.captureStream(30);
                 localStream = stream;
                 isCameraOn = true;
                 document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
                 document.getElementById('cameraToggleBtn').classList.add('red');
+                
                 if (inCall && meteredFrameInstance) {
                     document.getElementById('metered-frame').innerHTML = '';
                     let options = {
@@ -417,6 +409,7 @@
             document.getElementById('cameraToggleBtn').textContent = '📷 Включить камеру (лицо)';
             document.getElementById('cameraToggleBtn').classList.remove('red');
             document.getElementById('localPreview').style.display = 'none';
+            
             // Если звонок активен, перезапускаем Metered без камеры
             if (inCall && meteredFrameInstance) {
                 document.getElementById('metered-frame').innerHTML = '';
@@ -442,15 +435,18 @@
         // Переключение камеры (фронтальная/тыловая) — только если есть реальная камера
         document.getElementById('switchCamBtn').onclick = async () => {
             if (!isCameraOn || !localStream) return alert('Сначала включите камеру');
-            // Получаем текущие треки
+            // Проверяем, реальная ли это камера или виртуальная
             const videoTrack = localStream.getVideoTracks()[0];
             if (!videoTrack) return;
+            // Если трек от canvas — не переключаем
+            if (videoTrack.label && videoTrack.label.includes('canvas')) {
+                alert('Это виртуальная камера, переключение недоступно');
+                return;
+            }
             // Меняем facingMode
             const settings = videoTrack.getSettings();
             let newFacing = settings.facingMode === 'user' ? 'environment' : 'user';
-            // Останавливаем старый стрим
             stopLocalCamera();
-            // Запрашиваем новый с другим facingMode
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacing }, audio: false });
                 localStream = newStream;
@@ -481,13 +477,12 @@
             if(activeRemoteId) db.ref(`screenshares/${activeRemoteId}`).off();
             stopLocalCamera();
             if (meteredFrameInstance) {
-                meteredFrameInstance.close(); // попытка закрыть сессию
+                try { meteredFrameInstance.close(); } catch(e) {}
             }
             window.location.reload(); 
         };
 
-        // --- 10. ЗАГРУЗКА: проверяем была ли камера включена (сохраняем состояние?) нет, просто инициализация ---
-        // При загрузке камера выключена.
+        // --- 10. ЗАГРУЗКА ---
         console.log('Skype ready. ID:', myId);
     </script>
 </body>
