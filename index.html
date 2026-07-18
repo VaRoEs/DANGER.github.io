@@ -2,32 +2,34 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📱 Мобильный Скайп (Финальная версия)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>📱 Мобильный Скайп (WebRTC + Зритель)</title>
     
-    <!-- Подключаем Firebase (версия 8) -->
+    <!-- Подключаем Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
         
+        /* Включен скролл страницы */
         body {
-            background: #000; min-height: 100vh; height: 100dvh; display: flex; 
-            justify-content: center; align-items: center; overflow: hidden;
+            background: #000; min-height: 100vh; display: flex; 
+            justify-content: center; align-items: center; 
+            overflow-y: auto; overflow-x: hidden;
         }
         
         .app-container {
-            width: 100vw; height: 100vh; height: 100dvh;
-            background: #0f172a; position: relative; overflow: hidden;
+            width: 100vw; min-height: 100vh;
+            background: #0f172a; position: relative;
             display: flex; flex-direction: column;
         }
 
         /* --- ГЛАВНОЕ МЕНЮ --- */
         #menuScreen {
-            padding: 30px 20px; text-align: center; height: 100%; display: flex; 
+            padding: 30px 20px; text-align: center; display: flex; 
             flex-direction: column; align-items: center; justify-content: center;
-            max-width: 500px; margin: 0 auto; width: 100%;
+            max-width: 500px; margin: auto; width: 100%; min-height: 100vh;
         }
         h1 { color: #fff; font-size: 28px; margin-bottom: 30px; }
         
@@ -65,11 +67,11 @@
 
         /* --- ЭКРАН ЗВОНКА --- */
         #callScreen {
-            display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000;
+            display: none; position: absolute; top: 0; left: 0; width: 100%; min-height: 100vh; background: #000;
         }
         
         .video-remote {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100vh; 
             object-fit: contain; z-index: 1; background: #111;
         }
         
@@ -127,7 +129,7 @@
                 <div class="my-id" id="myIdDisplay">0000</div>
             </div>
             
-            <div class="status" id="status">🎤 Проверка медиа...</div>
+            <div class="status" id="status">🎤 Проверка оборудования...</div>
             
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             <button class="btn-call" id="connectBtn">Позвонить</button>
@@ -161,7 +163,7 @@
     </div>
     
     <script>
-        // Твои настройки Firebase с добавленной ссылкой на базу
+        // Настройки Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
             authDomain: "skype7q.firebaseapp.com",
@@ -178,7 +180,7 @@
         }
         const db = firebase.database();
 
-        // ОБНОВЛЕННЫЕ СЕРВЕРЫ WEBRTC (STUN + TURN ДЛЯ МОБИЛЬНЫХ СЕТЕЙ)
+        // Серверы WebRTC
         const servers = {
             iceServers: [
                 { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
@@ -278,25 +280,41 @@
 
         async function startMedia() {
             try {
+                // Попытка 1: Камера + Микрофон
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: { echoCancellation: true, noiseSuppression: true },
                     video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: currentFacingMode }
                 });
                 
                 isVideoEnabled = true;
+                isAudioEnabled = true;
                 document.getElementById('localVideo').srcObject = localStream;
-                updateStatus('🔥 В сети через Firebase. Готов!', 'success');
+                updateStatus('🔥 В сети. Готов к звонкам!', 'success');
             } catch (e) {
                 console.warn("Нет камеры, пробуем только звук");
                 try {
+                    // Попытка 2: Только микрофон
                     localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     isVideoEnabled = false;
+                    isAudioEnabled = true;
                     document.getElementById('toggleCamBtn').style.display = 'none'; 
                     document.getElementById('flipCamBtn').style.display = 'none'; 
                     document.getElementById('togglePipBtn').style.display = 'none'; 
-                    updateStatus('🔥 Режим аудио', 'success');
+                    updateStatus('🔥 Режим аудио. Готов!', 'success');
                 } catch (err) {
-                    updateStatus('⚠️ Нет доступа к медиа', 'warning');
+                    // Попытка 3: ПК без камеры и без микрофона (РЕЖИМ ЗРИТЕЛЯ)
+                    console.warn("Нет медиа-устройств. Запуск в режиме зрителя.");
+                    localStream = null;
+                    isVideoEnabled = false;
+                    isAudioEnabled = false;
+                    
+                    // Прячем лишние кнопки
+                    document.getElementById('toggleCamBtn').style.display = 'none'; 
+                    document.getElementById('toggleMicBtn').style.display = 'none'; 
+                    document.getElementById('flipCamBtn').style.display = 'none'; 
+                    document.getElementById('togglePipBtn').style.display = 'none'; 
+                    
+                    updateStatus('👁️ Режим зрителя (ПК без камеры/микрофона)', 'warning');
                 }
             }
         }
@@ -347,6 +365,7 @@
         }
 
         document.getElementById('flipCamBtn').onclick = (e) => { e.stopPropagation(); flipCamera(); showControls(); };
+        
         document.getElementById('togglePipBtn').onclick = (e) => {
             e.stopPropagation();
             isPipVisible = !isPipVisible;
@@ -366,6 +385,7 @@
                     peerConnection.addTransceiver('video', { direction: 'recvonly' });
                 }
             } else {
+                // Если нет ни микрофона, ни камеры (режим зрителя)
                 peerConnection.addTransceiver('audio', { direction: 'recvonly' });
                 peerConnection.addTransceiver('video', { direction: 'recvonly' });
             }
@@ -378,10 +398,8 @@
                 }
             };
             
-            // ИСПРАВЛЕНИЕ 1: Не сбрасываем звонок при временных лагах (disconnected), только при полной ошибке (failed)
             peerConnection.onconnectionstatechange = () => {
-                if (peerConnection.connectionState === 'failed') {
-                    console.warn("Соединение разорвано");
+                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
                     hangup();
                 }
             };
@@ -433,21 +451,19 @@
             
             await callDoc.set({ offer, callerId: myId });
 
-            // ИСПРАВЛЕНИЕ 2: Асинхронное ожидание (async/await), чтобы ICE кандидаты не ломали соединение до его установки
-            callDoc.on('value', async snapshot => {
+            // Слушаем, когда друг ответит (Answer)
+            callDoc.on('value', snapshot => {
                 const data = snapshot.val();
                 if (!peerConnection.currentRemoteDescription && data && data.answer) {
                     const answerDescription = new RTCSessionDescription(data.answer);
-                    await peerConnection.setRemoteDescription(answerDescription);
+                    peerConnection.setRemoteDescription(answerDescription);
                 }
             });
 
             // Слушаем чужие ICE кандидаты
-            answerCandidates.on('child_added', async data => {
+            answerCandidates.on('child_added', data => {
                 const candidate = new RTCIceCandidate(data.val());
-                try {
-                    await peerConnection.addIceCandidate(candidate);
-                } catch(e) { console.warn('Ошибка ICE кандидата', e); }
+                peerConnection.addIceCandidate(candidate);
             });
         };
 
@@ -478,10 +494,8 @@
             };
             await callDoc.update({ answer });
 
-            offerCandidates.on('child_added', async data => {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.val()));
-                } catch(e) { console.warn('Ошибка ICE кандидата', e); }
+            offerCandidates.on('child_added', data => {
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.val()));
             });
         };
 
