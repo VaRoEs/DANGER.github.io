@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📱 Мобильный Скайп (GitHub Pages Edition)</title>
+    <title>📱 Мобильный Скайп (Firebase)</title>
     
-    <!-- Подключаем облачный сигнальный сервер PeerJS -->
-    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <!-- Подключаем Firebase (версия 8) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
@@ -126,7 +127,7 @@
                 <div class="my-id" id="myIdDisplay">0000</div>
             </div>
             
-            <div class="status" id="status">🎤 Подключение к серверу...</div>
+            <div class="status" id="status">🎤 Проверка медиа...</div>
             
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             <button class="btn-call" id="connectBtn">Позвонить</button>
@@ -160,8 +161,28 @@
     </div>
     
     <script>
-        // Префикс нужен, чтобы ваши 4-значные ID не пересеклись с другими людьми в глобальной сети PeerJS
-        const APP_PREFIX = 'super-mobile-skype-v1-';
+        // Твои настройки Firebase с добавленной ссылкой на базу
+        const firebaseConfig = {
+            apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
+            authDomain: "skype7q.firebaseapp.com",
+            databaseURL: "https://skype7q-default-rtdb.firebaseio.com",
+            projectId: "skype7q",
+            storageBucket: "skype7q.firebasestorage.app",
+            messagingSenderId: "4846139446",
+            appId: "1:4846139446:web:f2b24c3da4d0887f3a8097",
+            measurementId: "G-7L0F495NGJ"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        const servers = {
+            iceServers: [
+                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+            ]
+        };
         
         let myId = localStorage.getItem('my_skype_id');
         if (!myId) {
@@ -171,10 +192,10 @@
         document.getElementById('myIdDisplay').textContent = myId;
         
         let localStream = null;
-        let peer = null;
-        let currentCall = null;
-        let incomingCallObj = null;
-        let wakeLock = null;
+        let peerConnection = null;
+        let remoteId = null;
+        let incomingCallerId = null;
+        let callActive = false;
         
         let callTimer = null;
         let callSeconds = 0;
@@ -196,12 +217,10 @@
                 document.getElementById('menuScreen').style.display = 'none';
                 document.getElementById('callScreen').style.display = 'block';
                 showControls();
-                keepScreenOn();
             } else {
                 document.getElementById('menuScreen').style.display = 'flex';
                 document.getElementById('callScreen').style.display = 'none';
                 stopTimer();
-                allowScreenSleep();
                 clearTimeout(hideControlsTimeout);
             }
         }
@@ -241,13 +260,6 @@
             document.getElementById('timerDisplay').textContent = "Подключение...";
         }
 
-        async function keepScreenOn() {
-            try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
-        }
-        function allowScreenSleep() {
-            if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
-        }
-
         async function startMedia() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({
@@ -257,7 +269,7 @@
                 
                 isVideoEnabled = true;
                 document.getElementById('localVideo').srcObject = localStream;
-                updateStatus('✅ В сети. Готов к звонкам!', 'success');
+                updateStatus('🔥 В сети через Firebase. Готов!', 'success');
             } catch (e) {
                 console.warn("Нет камеры, пробуем только звук");
                 try {
@@ -266,45 +278,14 @@
                     document.getElementById('toggleCamBtn').style.display = 'none'; 
                     document.getElementById('flipCamBtn').style.display = 'none'; 
                     document.getElementById('togglePipBtn').style.display = 'none'; 
-                    updateStatus('✅ В сети. Режим аудио', 'success');
+                    updateStatus('🔥 Режим аудио', 'success');
                 } catch (err) {
                     updateStatus('⚠️ Нет доступа к медиа', 'warning');
                 }
             }
         }
 
-        async function flipCamera() {
-            if (!localStream) return;
-            const oldVideoTrack = localStream.getVideoTracks()[0];
-            if (oldVideoTrack) oldVideoTrack.stop();
-
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-
-            try {
-                const newStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
-
-                const newVideoTrack = newStream.getVideoTracks()[0];
-                newVideoTrack.enabled = isVideoEnabled; 
-
-                localStream.removeTrack(oldVideoTrack);
-                localStream.addTrack(newVideoTrack);
-                document.getElementById('localVideo').srcObject = localStream;
-
-                // Обновляем поток для PeerJS
-                if (currentCall && currentCall.peerConnection) {
-                    const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(newVideoTrack);
-                }
-
-                document.getElementById('localVideo').style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
-            } catch (e) {
-                console.error("Ошибка переворота камеры", e);
-            }
-        }
-
-        // Кнопки управления локальным медиа
+        // --- Управление медиа ---
         document.getElementById('toggleMicBtn').onclick = (e) => {
             e.stopPropagation();
             if (localStream && localStream.getAudioTracks().length > 0) {
@@ -329,119 +310,191 @@
             showControls();
         };
 
-        document.getElementById('flipCamBtn').onclick = (e) => {
-            e.stopPropagation();
-            flipCamera();
-            showControls();
-        };
+        async function flipCamera() {
+            if (!localStream) return;
+            const oldTrack = localStream.getVideoTracks()[0];
+            if (oldTrack) oldTrack.stop();
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            try {
+                const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } });
+                const newTrack = newStream.getVideoTracks()[0];
+                newTrack.enabled = isVideoEnabled; 
+                localStream.removeTrack(oldTrack);
+                localStream.addTrack(newTrack);
+                document.getElementById('localVideo').srcObject = localStream;
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(newTrack);
+                }
+                document.getElementById('localVideo').style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
+            } catch (e) { console.error(e); }
+        }
 
+        document.getElementById('flipCamBtn').onclick = (e) => { e.stopPropagation(); flipCamera(); showControls(); };
         document.getElementById('togglePipBtn').onclick = (e) => {
             e.stopPropagation();
             isPipVisible = !isPipVisible;
-            const btn = document.getElementById('togglePipBtn');
-            btn.classList.toggle('off', !isPipVisible);
+            document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
             document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
             showControls();
         };
 
-        // --- ЛОГИКА PEERJS ---
-        function initPeer() {
-            peer = new Peer(APP_PREFIX + myId, {
-                config: {
-                    'iceServers': [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
+        // --- ЛОГИКА WEBRTC И FIREBASE ---
+        
+        function setupPeerConnection() {
+            peerConnection = new RTCPeerConnection(servers);
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                if (localStream.getVideoTracks().length === 0) {
+                    peerConnection.addTransceiver('video', { direction: 'recvonly' });
                 }
-            });
+            } else {
+                peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+                peerConnection.addTransceiver('video', { direction: 'recvonly' });
+            }
 
-            peer.on('open', (id) => {
-                startMedia();
-            });
-
-            // Обработка входящего звонка
-            peer.on('call', (call) => {
-                incomingCallObj = call;
-                const callerId = call.peer.replace(APP_PREFIX, '');
-                document.getElementById('callerIdDisplay').textContent = callerId;
-                document.getElementById('incomingCall').classList.add('active');
-            });
-
-            peer.on('error', (err) => {
-                console.error(err);
-                if (err.type === 'peer-unavailable') {
-                    alert('Пользователь с таким ID не найден или не в сети.');
-                    hangup();
-                }
-            });
-        }
-
-        function setupCallEvents(call) {
-            call.on('stream', (remoteStream) => {
+            peerConnection.ontrack = event => {
                 const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.srcObject !== remoteStream) {
-                    remoteVid.srcObject = remoteStream;
+                if (remoteVid.srcObject !== event.streams[0]) {
+                    remoteVid.srcObject = event.streams[0];
                     startTimer();
                 }
-            });
-
-            call.on('close', () => {
-                hangup();
-            });
+            };
             
-            call.on('error', () => {
-                hangup();
-            });
+            peerConnection.onconnectionstatechange = () => {
+                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                    hangup();
+                }
+            };
         }
 
-        document.getElementById('connectBtn').onclick = () => {
-            const remoteId = document.getElementById('remoteId').value.trim();
-            if (!remoteId || remoteId === myId || remoteId.length !== 4) {
-                return alert('Введи 4 цифры ID друга');
+        // Слушаем входящие звонки к нам
+        db.ref(`calls/${myId}`).on('value', snapshot => {
+            if (callActive) return; // Если уже говорим - игнорим
+            const data = snapshot.val();
+            
+            if (data && data.offer) {
+                incomingCallerId = data.callerId;
+                document.getElementById('callerIdDisplay').textContent = incomingCallerId;
+                document.getElementById('incomingCall').classList.add('active');
             }
+        });
+
+        // Слушаем сброс звонка
+        db.ref(`calls/${myId}/hangup`).on('value', snapshot => {
+            if (snapshot.val() && callActive) {
+                hangup(); // Собеседник повесил трубку
+            }
+        });
+
+        document.getElementById('connectBtn').onclick = async () => {
+            remoteId = document.getElementById('remoteId').value.trim();
+            if (!remoteId || remoteId === myId || remoteId.length !== 4) return alert('Введи 4 цифры ID друга');
             
             switchScreen(true);
+            callActive = true;
+            setupPeerConnection();
+
+            // Создаем канал для звонка (мы - Caller)
+            const callDoc = db.ref(`calls/${remoteId}`);
+            const offerCandidates = db.ref(`calls/${remoteId}/offerCandidates`);
+            const answerCandidates = db.ref(`calls/${remoteId}/answerCandidates`);
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) offerCandidates.push(event.candidate.toJSON());
+            };
+
+            const offerDescription = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offerDescription);
+
+            const offer = {
+                sdp: offerDescription.sdp,
+                type: offerDescription.type,
+            };
             
-            // Звоним
-            currentCall = peer.call(APP_PREFIX + remoteId, localStream);
-            setupCallEvents(currentCall);
+            await callDoc.set({ offer, callerId: myId });
+
+            // Слушаем, когда друг ответит (Answer)
+            callDoc.on('value', snapshot => {
+                const data = snapshot.val();
+                if (!peerConnection.currentRemoteDescription && data && data.answer) {
+                    const answerDescription = new RTCSessionDescription(data.answer);
+                    peerConnection.setRemoteDescription(answerDescription);
+                }
+            });
+
+            // Слушаем чужие ICE кандидаты
+            answerCandidates.on('child_added', data => {
+                const candidate = new RTCIceCandidate(data.val());
+                peerConnection.addIceCandidate(candidate);
+            });
         };
 
-        document.getElementById('answerBtn').onclick = () => {
+        document.getElementById('answerBtn').onclick = async () => {
             document.getElementById('incomingCall').classList.remove('active');
             switchScreen(true);
-            
-            // Принимаем звонок и передаем свой поток
-            incomingCallObj.answer(localStream);
-            currentCall = incomingCallObj;
-            setupCallEvents(currentCall);
+            callActive = true;
+            setupPeerConnection();
+
+            const callDoc = db.ref(`calls/${myId}`);
+            const answerCandidates = db.ref(`calls/${myId}/answerCandidates`);
+            const offerCandidates = db.ref(`calls/${myId}/offerCandidates`);
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) answerCandidates.push(event.candidate.toJSON());
+            };
+
+            const callData = (await callDoc.get()).val();
+            const offerDescription = callData.offer;
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
+
+            const answerDescription = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answerDescription);
+
+            const answer = {
+                type: answerDescription.type,
+                sdp: answerDescription.sdp,
+            };
+            await callDoc.update({ answer });
+
+            offerCandidates.on('child_added', data => {
+                peerConnection.addIceCandidate(new RTCIceCandidate(data.val()));
+            });
         };
 
         document.getElementById('rejectBtn').onclick = () => {
             document.getElementById('incomingCall').classList.remove('active');
-            if (incomingCallObj) {
-                incomingCallObj.close();
-                incomingCallObj = null;
-            }
+            db.ref(`calls/${myId}`).remove(); // Очищаем базу от звонка
         };
 
         function hangup() {
-            if (currentCall) {
-                currentCall.close();
-                currentCall = null;
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
             }
             document.getElementById('remoteVideo').srcObject = null;
+            callActive = false;
             switchScreen(false);
+            
+            // Сообщаем собеседнику, что мы сбросили и чистим базу
+            const target = remoteId || incomingCallerId;
+            if (target) {
+                db.ref(`calls/${target}`).update({ hangup: true });
+                db.ref(`calls/${myId}`).remove();
+                setTimeout(() => db.ref(`calls/${target}`).remove(), 1000);
+            }
+            remoteId = null;
+            incomingCallerId = null;
         }
 
-        document.getElementById('hangupBtn').onclick = (e) => {
-            e.stopPropagation(); 
-            hangup();
-        };
+        document.getElementById('hangupBtn').onclick = (e) => { e.stopPropagation(); hangup(); };
 
-        // Запуск
-        initPeer();
-        
+        // Очищаем звонки при закрытии вкладки
+        window.onbeforeunload = hangup;
+
+        // Инициализируем медиа при загрузке страницы
+        startMedia();
     </script>
 </body>
 </html>
