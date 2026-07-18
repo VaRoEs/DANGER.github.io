@@ -126,7 +126,7 @@
             width: 120px; height: 160px; 
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
             background: #222; z-index: 60; object-fit: cover;
-            display: none; /* показываем только когда есть стрим */
+            display: none;
             box-shadow: 0 0 15px rgba(0,0,0,0.7);
         }
 
@@ -136,7 +136,6 @@
             background: rgba(255,255,255,0.3); padding: 10px; border-radius: 10px;
             backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
         }
-        /* Микро-кнопка для переключения камеры */
         .cam-toggle {
             position: absolute; bottom: 80px; left: 10px; z-index: 80;
             background: rgba(0,0,0,0.5); color: #fff; border: 1px solid #fff;
@@ -314,7 +313,6 @@
                 }
             }
             
-            // Создаём экземпляр Metered
             meteredFrameInstance = new MeteredFrame(); 
             meteredFrameInstance.init(options, document.getElementById("metered-frame"));
 
@@ -327,7 +325,7 @@
             }
         }
 
-        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (с принудительным показом даже без камеры) ---
+        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (виртуальный поток, если нет камеры) ---
         async function startLocalCamera() {
             try {
                 // Пытаемся получить реальную камеру
@@ -337,9 +335,7 @@
                 document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
                 document.getElementById('cameraToggleBtn').classList.add('red');
                 
-                // Если звонок уже активен, обновляем стрим в Metered
                 if (inCall && meteredFrameInstance) {
-                    // Перезапускаем сессию Metered с новым стримом
                     document.getElementById('metered-frame').innerHTML = '';
                     let options = {
                         roomURL: "skype777.metered.live/78",
@@ -357,26 +353,31 @@
                     updateStatus('Камера включена (ожидание вызова)', 'success');
                 }
             } catch (e) {
-                console.warn('Реальная камера недоступна, используем виртуальную заглушку');
-                // СОЗДАЁМ ВИРТУАЛЬНЫЙ ПОТОК (canvas) — он будет виден на компьютере без камеры!
+                console.warn('Реальная камера недоступна, создаём ВИРТУАЛЬНУЮ (будет видна на устройстве без камеры)');
+                // СОЗДАЁМ ВИРТУАЛЬНЫЙ ПОТОК (canvas) с динамическим содержимым
                 const canvas = document.createElement('canvas');
                 canvas.width = 320; canvas.height = 240;
                 const ctx = canvas.getContext('2d');
-                // Рисуем динамическую заглушку с текстом и анимацией
                 let frame = 0;
                 function drawFrame() {
                     ctx.fillStyle = '#003399';
                     ctx.fillRect(0, 0, 320, 240);
                     ctx.fillStyle = '#fff';
-                    ctx.font = '24px Segoe UI';
-                    ctx.fillText('📷 Виртуальная камера', 40, 100);
-                    ctx.font = '18px Segoe UI';
-                    ctx.fillText('ID: ' + myId, 100, 150);
+                    ctx.font = '20px Segoe UI';
+                    ctx.fillText('📷 Виртуальная камера', 50, 80);
+                    ctx.font = '16px Segoe UI';
+                    ctx.fillText('ID: ' + myId, 110, 130);
+                    // Анимация
                     ctx.fillStyle = '#ffcc00';
-                    ctx.fillRect(10, 180, 20 + frame % 60, 20);
+                    ctx.fillRect(20 + frame % 60, 180, 30, 30);
+                    ctx.fillStyle = '#ff6b6b';
+                    ctx.beginPath();
+                    ctx.arc(280, 200, 10 + Math.sin(frame/10)*5, 0, Math.PI*2);
+                    ctx.fill();
                     frame++;
+                    requestAnimationFrame(drawFrame);
                 }
-                setInterval(drawFrame, 100);
+                drawFrame();
                 // Создаём поток из canvas (30 FPS)
                 const stream = canvas.captureStream(30);
                 localStream = stream;
@@ -410,7 +411,6 @@
             document.getElementById('cameraToggleBtn').classList.remove('red');
             document.getElementById('localPreview').style.display = 'none';
             
-            // Если звонок активен, перезапускаем Metered без камеры
             if (inCall && meteredFrameInstance) {
                 document.getElementById('metered-frame').innerHTML = '';
                 let options = {
@@ -432,10 +432,9 @@
             }
         };
 
-        // Переключение камеры (фронтальная/тыловая) — только если есть реальная камера
+        // Переключение камеры
         document.getElementById('switchCamBtn').onclick = async () => {
             if (!isCameraOn || !localStream) return alert('Сначала включите камеру');
-            // Проверяем, реальная ли это камера или виртуальная
             const videoTrack = localStream.getVideoTracks()[0];
             if (!videoTrack) return;
             // Если трек от canvas — не переключаем
@@ -443,7 +442,6 @@
                 alert('Это виртуальная камера, переключение недоступно');
                 return;
             }
-            // Меняем facingMode
             const settings = videoTrack.getSettings();
             let newFacing = settings.facingMode === 'user' ? 'environment' : 'user';
             stopLocalCamera();
