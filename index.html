@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Win7 Скайп</title>
+    <title>Win7 WebRTC Skype</title>
     
     <!-- Подключаем Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    
-    <!-- Подключаем Metered SDK -->
-    <script src="https://cdn.metered.ca/sdk/frame/1.4.3/sdk-frame.min.js"></script>
 
     <style>
         /* --- СТИЛЬ WINDOWS 7 AERO GLASS --- */
@@ -19,33 +16,12 @@
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
         /* Win7 Scrollbars */
-        ::-webkit-scrollbar {
-            width: 17px;
-            height: 17px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f0f0f0;
-            border-left: 1px solid #e3e3e3;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cdd5e0;
-            border: 1px solid #aebac8;
-            border-radius: 2px;
-            box-shadow: inset 1px 1px 0 rgba(255,255,255,0.8);
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #b0b9c6;
-        }
-        ::-webkit-scrollbar-thumb:active {
-            background: #9aa4b4;
-        }
-        ::-webkit-scrollbar-button {
-            display: block;
-            height: 17px;
-            width: 17px;
-            background: #dfe3e9;
-            border: 1px solid #aebac8;
-        }
+        ::-webkit-scrollbar { width: 17px; height: 17px; }
+        ::-webkit-scrollbar-track { background: #f0f0f0; border-left: 1px solid #e3e3e3; }
+        ::-webkit-scrollbar-thumb { background: #cdd5e0; border: 1px solid #aebac8; border-radius: 2px; box-shadow: inset 1px 1px 0 rgba(255,255,255,0.8); }
+        ::-webkit-scrollbar-thumb:hover { background: #b0b9c6; }
+        ::-webkit-scrollbar-thumb:active { background: #9aa4b4; }
+        ::-webkit-scrollbar-button { display: block; height: 17px; width: 17px; background: #dfe3e9; border: 1px solid #aebac8; }
 
         body {
             /* Имитация обоев Windows 7 */
@@ -54,64 +30,45 @@
             justify-content: center; align-items: center; overflow: hidden;
         }
         
+        .app-container {
+            width: 100vw; height: 100vh; height: 100dvh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+
+        /* --- ГЛАВНОЕ МЕНЮ (ОКНО AERO) --- */
         .aero-window {
             width: 95%; max-width: 450px; max-height: 95vh;
-            /* Эффект стекла */
             background: rgba(255, 255, 255, 0.25);
             border: 1px solid rgba(255, 255, 255, 0.6);
             box-shadow: 0 0 15px rgba(0,0,0,0.5), inset 0 0 25px rgba(255,255,255,0.7);
             border-radius: 8px;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            position: relative;
-            display: flex; flex-direction: column;
-            overflow: hidden;
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            display: flex; flex-direction: column; overflow: hidden; transition: 0.3s;
         }
 
         .title-bar {
             background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(220,220,220,0.3) 100%);
-            padding: 8px 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.5);
+            padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.5);
             border-top-left-radius: 7px; border-top-right-radius: 7px;
-            display: flex; justify-content: space-between; align-items: center;
-            flex-shrink: 0;
+            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
         }
-        .title-bar .title {
-            color: #000; font-size: 14px; font-weight: 600; text-shadow: 0 0 5px #fff, 0 0 10px #fff;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .title-bar .controls {
-            display: flex; gap: 4px;
-        }
-        .win-btn {
-            width: 26px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); cursor: pointer;
-        }
-        .win-btn.close {
-            background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%);
-        }
+        .title-bar .title { color: #000; font-size: 14px; font-weight: 600; text-shadow: 0 0 5px #fff, 0 0 10px #fff; }
+        .win-btn { width: 26px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2); box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); cursor: pointer; }
+        .win-btn.close { background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%); }
 
         .content-area {
-            background: #fff;
-            margin: 0 5px 5px 5px; border-radius: 3px;
-            border: 1px solid rgba(0,0,0,0.3);
-            padding: 20px; display: flex; flex-direction: column; align-items: center;
+            background: #fff; margin: 0 5px 5px 5px; border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.3); padding: 20px; display: flex; flex-direction: column; align-items: center;
             overflow-y: auto; flex-grow: 1;
         }
 
         h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
         
-        .id-box { 
-            background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; 
-            width: 100%; border: 1px solid #cdd8e4; text-align: center;
-        }
+        .id-box { background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; width: 100%; border: 1px solid #cdd8e4; text-align: center; }
         .id-box p { color: #555; font-size: 13px; margin-bottom: 5px; }
         .my-id { font-size: 36px; color: #003399; letter-spacing: 3px; font-family: 'Consolas', monospace; }
         
-        .status { 
-            padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 20px; 
-            font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
-        }
+        .status { padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 20px; font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent; }
         .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
         .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
         
@@ -121,107 +78,106 @@
         }
         input:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
         
-        /* Глянцевые кнопки Windows 7 */
         .glossy-btn {
-            width: 100%; padding: 10px; border-radius: 3px; font-size: 15px;
+            width: 100%; padding: 10px; border-radius: 3px; font-size: 15px; font-weight: 600;
             background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
             border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
-            margin-bottom: 10px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1); margin-bottom: 10px;
         }
         .glossy-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
         .glossy-btn:active { background: linear-gradient(to bottom, #a7d9f5 0%, #bee6fd 49%, #d6f0fd 50%, #f2f9fe 100%); box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
-        
-        .glossy-btn.green {
-            background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%);
-            border-color: #7fbf7f;
-        }
-        .glossy-btn.red {
-            background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
-            border-color: #bf7f7f;
-        }
+        .glossy-btn.green { background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%); border-color: #7fbf7f; }
+        .glossy-btn.red { background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%); border-color: #bf7f7f; }
+        .glossy-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .incoming-box {
-            display: none; background: #ffffcc; border: 1px solid #ffcc00;
-            padding: 15px; border-radius: 3px; margin-top: 15px; width: 100%; text-align: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: none; background: #ffffcc; border: 1px solid #ffcc00; padding: 15px; border-radius: 3px; 
+            margin-top: 15px; width: 100%; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         .incoming-box.active { display: block; }
-        .incoming-box p { color: #333; font-size: 15px; margin-bottom: 10px; }
-        .action-buttons { display: flex; gap: 5px; }
+        .action-buttons { display: flex; gap: 5px; margin-top: 10px; }
 
-        /* --- ЭКРАН ЗВОНКА --- */
-        #callScreen {
-            display: none; width: 100vw; height: 100vh; position: fixed;
-            top: 0; left: 0; background: #000; z-index: 1000;
-        }
-        #metered-frame { width: 100%; height: 100%; border: none; }
+        /* --- ЭКРАН ЗВОНКА (НАТИВНЫЙ WEBRTC) --- */
+        #callScreen { display: none; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; background: #000; z-index: 1000; }
         
-        #jpeg-screen-viewer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: contain; background: #000; z-index: 50; display: none;
+        .video-remote { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; background: #111; }
+        .video-local {
+            display: none; position: absolute; top: 80px; right: 20px; width: 120px; height: 160px;
+            object-fit: cover; border-radius: 5px; background: #222; border: 2px solid rgba(255,255,255,0.6);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6); transform: scaleX(-1); z-index: 5;
         }
 
-        .call-controls {
+        .top-panel { position: absolute; top: 20px; left: 0; right: 0; display: flex; justify-content: center; z-index: 10; transition: 0.3s; }
+        .timer-box { background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.3); color: #000; padding: 5px 15px; border-radius: 3px; font-weight: 600; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+
+        .controls-panel {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 10px; z-index: 100;
-            background: rgba(255,255,255,0.4); padding: 10px 20px; border-radius: 8px;
-            backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.6);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: flex; gap: 10px; align-items: center; padding: 10px 20px;
+            background: rgba(255,255,255,0.5); border-radius: 8px; border: 1px solid rgba(255,255,255,0.7);
+            backdrop-filter: blur(15px); z-index: 10; transition: 0.4s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        .call-controls .glossy-btn { margin-bottom: 0; }
+        .controls-panel.hidden { opacity: 0; transform: translate(-50%, 50px); pointer-events: none; }
+        .top-panel.hidden { opacity: 0; transform: translateY(-30px); }
+        
+        .controls-panel .glossy-btn { margin-bottom: 0; width: auto; padding: 8px 15px; font-size: 16px; }
+        .controls-panel .glossy-btn.off { background: #e0e0e0; color: #555; border-color: #ccc; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-hangup { padding: 8px 25px !important; }
+
     </style>
 </head>
 <body>
-    <div class="aero-window" id="mainWindow">
-        <div class="title-bar">
-            <div class="title">📱 Windows 7 Skype</div>
-            <div class="controls">
-                <button class="win-btn" style="background: linear-gradient(to bottom, #f0f0f0, #ccc);"></button>
-                <button class="win-btn close" onclick="window.close()"></button>
-            </div>
-        </div>
+    <div class="app-container">
         
-        <div class="content-area" id="menuScreen">
-            <h2>Ваш профиль</h2>
-            
-            <div class="id-box">
-                <p>Твой постоянный ID:</p>
-                <div class="my-id" id="myIdDisplay">0000</div>
+        <div class="aero-window" id="menuScreen">
+            <div class="title-bar">
+                <div class="title">📱 Windows 7 WebRTC Skype</div>
+                <div class="controls"><button class="win-btn close" onclick="window.close()"></button></div>
             </div>
             
-            <div class="status success" id="status">В сети. Ожидание вызовов...</div>
-            
-            <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
-            
-            <button class="glossy-btn" id="connectBtn">📞 Позвонить</button>
-            <button class="glossy-btn" id="jpegShareBtn" style="font-size: 13px;">🖥️ Поделиться экраном (60 FPS)</button>
-            
-            <div class="incoming-box" id="incomingCall">
-                <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
-                <div class="action-buttons">
-                    <button class="glossy-btn green" id="answerBtn">Принять</button>
-                    <button class="glossy-btn red" id="rejectBtn">Отклонить</button>
+            <div class="content-area">
+                <h2>Ваш профиль</h2>
+                <div class="id-box">
+                    <p>Твой постоянный ID:</p>
+                    <div class="my-id" id="myIdDisplay">0000</div>
+                </div>
+                
+                <div class="status warning" id="status">🎤 Проверка камеры и микрофона...</div>
+                
+                <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
+                <button class="glossy-btn" id="connectBtn">📞 Позвонить</button>
+                
+                <div class="incoming-box" id="incomingCall">
+                    <p>📞 Входящий звонок: <strong id="callerIdDisplay">...</strong></p>
+                    <div class="action-buttons">
+                        <button class="glossy-btn green" id="answerBtn">Принять</button>
+                        <button class="glossy-btn red" id="rejectBtn">Отклонить</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- ЭКРАН ЗВОНКА -->
-    <div id="callScreen">
-        <!-- Сюда вставляется видеосвязь Metered -->
-        <div id="metered-frame"></div>
-        
-        <!-- Сюда вставляется трансляция экрана 60 FPS -->
-        <img id="jpeg-screen-viewer" alt="Трансляция экрана" />
-        
-        <div class="call-controls">
-            <button class="glossy-btn red" id="leaveCallBtn" style="padding: 10px 30px;">Завершить</button>
+        <!-- НАТИВНЫЙ WEBRTC ЭКРАН -->
+        <div id="callScreen">
+            <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
+            <video id="localVideo" class="video-local" autoplay muted playsinline></video>
+            
+            <div class="top-panel" id="topPanel">
+                <div class="timer-box" id="timerDisplay">Подключение...</div>
+            </div>
+            
+            <div class="controls-panel" id="controlsPanel">
+                <button class="glossy-btn" id="toggleMicBtn" title="Микрофон">🎤</button>
+                <button class="glossy-btn" id="toggleCamBtn" title="Камера">📷</button>
+                <button class="glossy-btn" id="shareScreenBtn" title="Трансляция Экрана 60FPS">🖥️ ЭКРАН</button>
+                <button class="glossy-btn" id="togglePipBtn" title="Свое видео">👁️</button>
+                <button class="glossy-btn red btn-hangup" id="hangupBtn">Завершить</button>
+            </div>
         </div>
-    </div>
 
+    </div>
+    
     <script>
-        // --- 1. НАСТРОЙКИ FIREBASE ---
+        // --- 1. НАСТРОЙКИ FIREBASE И WEBRTC ---
         const firebaseConfig = {
             apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
             authDomain: "skype7q.firebaseapp.com",
@@ -231,22 +187,37 @@
             messagingSenderId: "4846139446",
             appId: "1:4846139446:web:f2b24c3da4d0887f3a8097"
         };
-        if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // --- 2. ИДЕНТИФИКАЦИЯ ---
+        const rtcConfig = {
+            iceServers: [ { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' } ]
+        };
+        
         let myId = localStorage.getItem('my_skype_id');
         if (!myId) {
             myId = Math.floor(1000 + Math.random() * 9000).toString();
             localStorage.setItem('my_skype_id', myId);
         }
         document.getElementById('myIdDisplay').textContent = myId;
-        db.ref(`calls/${myId}`).remove(); // Очистка при загрузке
+        
+        // Глобальные переменные
+        let localStream = null;
+        let screenStream = null;
+        let peerConnection = null;
+        let activeRemoteId = null;
+        let incomingOffer = null;
+        let iceCandidatesQueue = [];
+        let isCallingState = false;
+        
+        let callTimer = null;
+        let callSeconds = 0;
+        let hideControlsTimeout = null;
 
-        let inCall = false;
-        let activeRemoteId = null; 
+        let isVideoEnabled = true; 
+        let isAudioEnabled = true;
+        let isPipVisible = false;
 
-        // --- 3. ИНТЕРФЕЙС ---
         function updateStatus(msg, type = 'success') {
             const el = document.getElementById('status');
             el.textContent = msg; el.className = 'status ' + type;
@@ -255,180 +226,303 @@
         // Вспомогательная функция для включения Fullscreen
         function openFullscreen() {
             const elem = document.documentElement;
-            if (elem.requestFullscreen) {
-                elem.requestFullscreen().catch(err => console.log("Fullscreen error:", err));
-            } else if (elem.webkitRequestFullscreen) { /* Safari */
-                elem.webkitRequestFullscreen().catch(err => console.log("Fullscreen error:", err));
-            } else if (elem.msRequestFullscreen) { /* IE11 */
-                elem.msRequestFullscreen().catch(err => console.log("Fullscreen error:", err));
+            if (elem.requestFullscreen) elem.requestFullscreen().catch(()=>{});
+        }
+
+        function switchScreen(inCall) {
+            if (inCall) {
+                openFullscreen();
+                document.getElementById('menuScreen').style.display = 'none';
+                document.getElementById('callScreen').style.display = 'block';
+                showControls();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+                document.getElementById('menuScreen').style.display = 'flex';
+                document.getElementById('callScreen').style.display = 'none';
+                stopTimer();
+                clearTimeout(hideControlsTimeout);
+                isCallingState = false;
+                
+                const btn = document.getElementById('connectBtn');
+                btn.disabled = false; btn.textContent = '📞 Позвонить';
             }
         }
 
-        // --- 4. ВХОДЯЩИЕ ЗВОНКИ ---
-        db.ref(`calls/${myId}`).on('value', snapshot => {
-            const data = snapshot.val();
-            if (data && data.status === 'ringing') {
-                if (inCall) { db.ref(`calls/${myId}`).update({ status: 'rejected' }); return; }
-                activeRemoteId = data.callerId;
-                document.getElementById('callerIdDisplay').textContent = data.callerId;
+        function showControls() {
+            document.getElementById('controlsPanel').classList.remove('hidden');
+            document.getElementById('topPanel').classList.remove('hidden');
+            clearTimeout(hideControlsTimeout);
+            hideControlsTimeout = setTimeout(() => { 
+                document.getElementById('controlsPanel').classList.add('hidden');
+                document.getElementById('topPanel').classList.add('hidden');
+            }, 3500);
+        }
+
+        document.getElementById('callScreen').addEventListener('mousemove', showControls);
+        document.getElementById('callScreen').addEventListener('touchstart', showControls);
+        document.getElementById('callScreen').addEventListener('click', showControls);
+
+        function startTimer() {
+            callSeconds = 0;
+            const timerEl = document.getElementById('timerDisplay');
+            timerEl.textContent = "00:00";
+            if (callTimer) clearInterval(callTimer);
+            callTimer = setInterval(() => {
+                callSeconds++;
+                const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+                const secs = String(callSeconds % 60).padStart(2, '0');
+                timerEl.textContent = `${mins}:${secs}`;
+            }, 1000);
+        }
+        function stopTimer() {
+            if (callTimer) clearInterval(callTimer);
+            document.getElementById('timerDisplay').textContent = "Подключение...";
+        }
+
+        // --- 2. ДОСТУП К КАМЕРЕ ---
+        async function startMedia() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true },
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+                });
+                isVideoEnabled = true;
+                document.getElementById('localVideo').srcObject = localStream;
+                updateStatus('✅ Готов к видеозвонкам', 'success');
+            } catch (e) {
+                console.warn("Нет камеры, пробуем только звук");
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    isVideoEnabled = false;
+                    document.getElementById('toggleCamBtn').style.display = 'none'; 
+                    document.getElementById('togglePipBtn').style.display = 'none'; 
+                    updateStatus('✅ Режим аудио (камера не найдена)', 'success');
+                } catch (err) {
+                    updateStatus('⚠️ Нет доступа к микрофону и камере', 'warning');
+                }
+            }
+        }
+
+        // --- 3. СИГНАЛИНГ ЧЕРЕЗ FIREBASE ---
+        const messagesRef = db.ref(`messages/${myId}`);
+        
+        // Очищаем старые сообщения при загрузке
+        messagesRef.remove();
+        
+        // Слушаем новые сообщения
+        messagesRef.on('child_added', async snapshot => {
+            const msg = snapshot.val();
+            snapshot.ref.remove(); // Удаляем после прочтения
+
+            if (msg.action === 'offer') {
+                if (isCallingState) {
+                    sendMessage('reject', null, msg.sender); // Занято
+                    return; 
+                }
+                incomingOffer = msg.data;
+                activeRemoteId = msg.sender;
+                document.getElementById('callerIdDisplay').textContent = activeRemoteId;
                 document.getElementById('incomingCall').classList.add('active');
-                updateStatus('Входящий вызов...', 'warning');
-            } else {
-                document.getElementById('incomingCall').classList.remove('active');
-                if (!inCall) updateStatus('В сети. Ожидание вызовов...', 'success');
+                
+            } else if (msg.action === 'answer' && peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(msg.data));
+                processIceQueue(); 
+                
+            } else if (msg.action === 'candidate') {
+                if (peerConnection && peerConnection.remoteDescription) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(msg.data)).catch(console.error);
+                } else {
+                    iceCandidatesQueue.push(msg.data); 
+                }
+            } else if (msg.action === 'reject') {
+                alert('Вызов отклонен или абонент занят.');
+                hangup();
+            } else if (msg.action === 'hangup') {
+                hangup();
             }
         });
 
-        // --- 5. ИСХОДЯЩИЙ ЗВОНОК ---
-        document.getElementById('connectBtn').onclick = () => {
-            const remoteId = document.getElementById('remoteId').value.trim();
-            if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
-            
-            inCall = true;
-            activeRemoteId = remoteId;
-            updateStatus('Дозвон...', 'warning');
-            
-            const btn = document.getElementById('connectBtn');
-            btn.textContent = 'Отменить вызов';
-            
-            let callRef = db.ref(`calls/${remoteId}`);
-            callRef.set({ callerId: myId, status: 'ringing' });
+        async function sendMessage(action, data, target) {
+            db.ref(`messages/${target}`).push({ sender: myId, action: action, data: data });
+        }
 
-            btn.onclick = () => {
-                callRef.remove(); callRef.off(); inCall = false; activeRemoteId = null;
-                btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
-                updateStatus('В сети', 'success');
+        function processIceQueue() {
+            while (iceCandidatesQueue.length > 0) {
+                let cand = iceCandidatesQueue.shift();
+                peerConnection.addIceCandidate(new RTCIceCandidate(cand)).catch(console.error);
+            }
+        }
+
+        // --- 4. ЯДРО WEBRTC (С ИСПРАВЛЕНИЕМ ДЛЯ ЧЕРНОГО ЭКРАНА) ---
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            
+            if (localStream) {
+                localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+                
+                // РЕШЕНИЕ ПРОБЛЕМЫ: Если у нас нет камеры, мы всё равно требуем видео от собеседника!
+                if (localStream.getVideoTracks().length === 0) {
+                    peerConnection.addTransceiver('video', { direction: 'recvonly' });
+                }
+            } else {
+                // Если нет вообще ничего
+                peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+                peerConnection.addTransceiver('video', { direction: 'recvonly' });
+            }
+            
+            peerConnection.ontrack = e => {
+                const remoteVid = document.getElementById('remoteVideo');
+                if (remoteVid.srcObject !== e.streams[0]) {
+                    remoteVid.srcObject = e.streams[0];
+                }
+            };
+            
+            peerConnection.onicecandidate = e => {
+                if (e.candidate && activeRemoteId) {
+                    sendMessage('candidate', e.candidate, activeRemoteId);
+                }
             };
 
-            callRef.on('value', snap => {
-                const data = snap.val();
-                if (data && data.status === 'answered') {
-                    callRef.off(); callRef.remove(); startMeteredCall();
-                } else if (data && data.status === 'rejected') {
-                    callRef.off(); inCall = false; activeRemoteId = null;
-                    btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
-                    updateStatus('Отклонено/Занято', 'warning');
-                    setTimeout(() => updateStatus('В сети', 'success'), 3000);
+            peerConnection.onconnectionstatechange = () => {
+                if (peerConnection.connectionState === 'connected') {
+                    startTimer();
+                } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                    hangup();
                 }
-            });
+            };
+        }
+
+        // --- 5. КНОПКИ ВЫЗОВА ---
+        document.getElementById('connectBtn').onclick = async () => {
+            if (isCallingState) return;
+            const targetId = document.getElementById('remoteId').value.trim();
+            if (!targetId || targetId === myId || targetId.length !== 4) return alert('Введи 4 цифры ID друга');
+            
+            isCallingState = true;
+            activeRemoteId = targetId;
+            const btn = document.getElementById('connectBtn');
+            btn.disabled = true; btn.textContent = 'Дозвон...';
+            
+            iceCandidatesQueue = []; 
+            switchScreen(true);
+            
+            createPeerConnection();
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            sendMessage('offer', offer, activeRemoteId);
         };
 
-        // --- 6. ПРИНЯТЬ / ОТКЛОНИТЬ ---
-        document.getElementById('answerBtn').onclick = () => {
-            inCall = true; document.getElementById('incomingCall').classList.remove('active');
-            db.ref(`calls/${myId}`).update({ status: 'answered' });
-            startMeteredCall();
+        document.getElementById('answerBtn').onclick = async () => {
+            isCallingState = true;
+            document.getElementById('incomingCall').classList.remove('active');
+            
+            switchScreen(true);
+            createPeerConnection();
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+            processIceQueue();
+
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            sendMessage('answer', answer, activeRemoteId);
         };
+
         document.getElementById('rejectBtn').onclick = () => {
             document.getElementById('incomingCall').classList.remove('active');
-            db.ref(`calls/${myId}`).update({ status: 'rejected' });
-            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000);
-            updateStatus('В сети', 'success');
+            sendMessage('reject', null, activeRemoteId);
+            activeRemoteId = null;
+            incomingOffer = null;
         };
 
-        // --- 7. METERED SDK & ПРОСЛУШИВАНИЕ ЭКРАНА ---
-        function startMeteredCall() {
-            // Включаем полноэкранный режим
-            openFullscreen();
+        function hangup() {
+            if (activeRemoteId) sendMessage('hangup', null, activeRemoteId);
+            if (peerConnection) { peerConnection.close(); peerConnection = null; }
+            if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
+            document.getElementById('remoteVideo').srcObject = null;
+            document.getElementById('shareScreenBtn').classList.remove('green');
+            activeRemoteId = null;
+            iceCandidatesQueue = []; 
+            switchScreen(false);
+        }
+
+        document.getElementById('hangupBtn').onclick = hangup;
+
+        // --- 6. КНОПКИ УПРАВЛЕНИЯ В ЗВОНКЕ ---
+        document.getElementById('toggleMicBtn').onclick = () => {
+            if (localStream && localStream.getAudioTracks().length > 0) {
+                isAudioEnabled = !isAudioEnabled;
+                localStream.getAudioTracks()[0].enabled = isAudioEnabled;
+                const btn = document.getElementById('toggleMicBtn');
+                btn.classList.toggle('off', !isAudioEnabled);
+            }
+            showControls();
+        };
+
+        document.getElementById('toggleCamBtn').onclick = () => {
+            if (localStream && localStream.getVideoTracks().length > 0) {
+                isVideoEnabled = !isVideoEnabled;
+                localStream.getVideoTracks()[0].enabled = isVideoEnabled;
+                const btn = document.getElementById('toggleCamBtn');
+                btn.classList.toggle('off', !isVideoEnabled);
+            }
+            showControls();
+        };
+
+        document.getElementById('togglePipBtn').onclick = () => {
+            isPipVisible = !isPipVisible;
+            const btn = document.getElementById('togglePipBtn');
+            btn.classList.toggle('off', !isPipVisible);
+            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            showControls();
+        };
+
+        // --- 7. НАТИВНАЯ ТРАНСЛЯЦИЯ ЭКРАНА 60 FPS ---
+        document.getElementById('shareScreenBtn').onclick = async () => {
+            const btn = document.getElementById('shareScreenBtn');
             
-            document.getElementById('mainWindow').style.display = 'none';
-            document.getElementById('callScreen').style.display = 'block';
-            
-            // Включаем Metered 
-            // Добавляем параметр для отображения участников без камер
-            var frame = new MeteredFrame(); 
-            frame.init({
-                roomURL: "skype777.metered.live/78",
-                requireCamera: false,
-                requireMicrophone: false,
-                // Позволяем фрейму использовать экран и полноэкранный режим:
-                iframeAttributes: {
-                    allow: "camera; microphone; fullscreen; display-capture"
+            if (screenStream) {
+                // Выключаем трансляцию экрана
+                screenStream.getTracks().forEach(t => t.stop());
+                screenStream = null;
+                btn.classList.remove('green');
+                
+                // Возвращаем камеру
+                if (localStream && isVideoEnabled && peerConnection) {
+                    const videoTrack = localStream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                        if (sender) sender.replaceTrack(videoTrack);
+                    }
+                    document.getElementById('localVideo').srcObject = localStream;
                 }
-            }, document.getElementById("metered-frame"));
-
-            // Слушаем трансляцию от собеседника (60 FPS вариант)
-            if (activeRemoteId) {
-                db.ref(`screenshares/${activeRemoteId}`).on('value', snap => {
-                    const data = snap.val();
-                    const viewer = document.getElementById('jpeg-screen-viewer');
-                    if(data && data.img) {
-                        viewer.src = data.img;
-                        viewer.style.display = 'block';
-                    } else {
-                        viewer.style.display = 'none';
+            } else {
+                // Включаем трансляцию экрана
+                try {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                        video: { frameRate: { ideal: 60, max: 60 } }, 
+                        audio: false 
+                    });
+                    btn.classList.add('green');
+                    
+                    const screenTrack = screenStream.getVideoTracks()[0];
+                    if (peerConnection) {
+                        // Подменяем трек видео на лету без переподключения
+                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                        if (sender) sender.replaceTrack(screenTrack);
+                        // Если нет камеры, то addTransceiver('video') позволяет нам сделать replaceTrack!
                     }
-                });
-            }
-        }
+                    document.getElementById('localVideo').srcObject = screenStream;
 
-        // Завершение звонка
-        document.getElementById('leaveCallBtn').onclick = () => {
-            if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
-            db.ref(`calls/${myId}`).remove();
-            if(activeRemoteId) db.ref(`screenshares/${activeRemoteId}`).off();
-            stopJpegScreenShare();
-            window.location.reload(); 
+                    screenTrack.onended = () => { btn.click(); }; // Авто-возврат при закрытии доступа
+                } catch (err) {
+                    console.error("Трансляция отменена или ошибка", err);
+                }
+            }
+            showControls();
         };
 
-        // --- 8. ТРАНСЛЯЦИЯ ЭКРАНА (60 FPS) ---
-        let screenStream = null;
-        let jpegInterval = null;
-        let isSharing = false;
+        // Запуск
+        startMedia();
 
-        document.getElementById('jpegShareBtn').onclick = async () => {
-            if (isSharing) {
-                stopJpegScreenShare();
-                return;
-            }
-
-            try {
-                // Захват экрана
-                screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 60, max: 60 } }, audio: false });
-                isSharing = true;
-                document.getElementById('jpegShareBtn').textContent = '⏹️ Остановить трансляцию';
-                document.getElementById('jpegShareBtn').classList.add('red');
-
-                const video = document.createElement('video');
-                video.srcObject = screenStream;
-                video.play();
-
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-
-                // Отправляем картинку ~60 раз в секунду (1000ms / 60 = ~16ms)
-                jpegInterval = setInterval(() => {
-                    if (video.videoWidth) {
-                        // Сжимаем чтобы Firebase не лег моментально от 60 кадров
-                        canvas.width = 800; 
-                        canvas.height = (video.videoHeight / video.videoWidth) * 800;
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        
-                        // JPEG качество 40% (чем меньше, тем быстрее)
-                        const jpegData = canvas.toDataURL('image/jpeg', 0.4); 
-                        db.ref(`screenshares/${myId}`).set({ img: jpegData });
-                    }
-                }, 16); // 60 FPS
-
-                screenStream.getVideoTracks()[0].onended = stopJpegScreenShare;
-
-            } catch (e) {
-                alert('Не удалось захватить экран. ' + e.message);
-            }
-        };
-
-        function stopJpegScreenShare() {
-            isSharing = false;
-            clearInterval(jpegInterval);
-            if(screenStream) screenStream.getTracks().forEach(t => t.stop());
-            db.ref(`screenshares/${myId}`).remove();
-            
-            const btn = document.getElementById('jpegShareBtn');
-            if (btn) {
-                btn.textContent = '🖥️ Поделиться экраном (60 FPS)';
-                btn.classList.remove('red');
-            }
-        }
     </script>
 </body>
 </html>
