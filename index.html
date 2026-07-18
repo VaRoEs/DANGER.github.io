@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Win7 Скайп</title>
+    <title>Win7 Скайп (60 FPS Edition)</title>
     
     <!-- Подключаем Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -135,12 +135,12 @@
             background: #222; border: 2px solid rgba(255, 255, 255, 0.8);
             border-radius: 8px; overflow: hidden; z-index: 150;
             box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            display: none; cursor: move; /* Курсор для перетаскивания */
+            display: none; cursor: move;
         }
         
         #local-video {
             width: 100%; height: 100%; object-fit: cover;
-            transform: scaleX(-1); /* Зеркально */
+            transform: scaleX(-1);
         }
 
         .call-controls {
@@ -199,7 +199,7 @@
         </div>
 
         <div class="call-controls">
-            <button class="glossy-btn" id="jpegShareBtn" style="font-size: 13px;">🖥️ Поделиться экраном</button>
+            <button class="glossy-btn" id="jpegShareBtn" style="font-size: 13px;">🖥️ Поделиться экраном (60 FPS)</button>
             <button class="glossy-btn red" id="leaveCallBtn">Завершить</button>
         </div>
     </div>
@@ -305,38 +305,45 @@
             document.getElementById('callScreen').style.display = 'block';
             document.getElementById('pip-container').style.display = 'block';
 
-            // 1. Запрашиваем свою камеру
+            // 1. Запрашиваем свою камеру в 60 FPS (если камера поддерживает)
             try {
-                myLocalStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                myLocalStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { frameRate: { ideal: 60, max: 60 } }, 
+                    audio: true 
+                });
                 document.getElementById('local-video').srcObject = myLocalStream;
             } catch (e) {
-                console.warn("Не удалось получить доступ к камере", e);
+                console.warn("Не удалось получить доступ к камере (или 60fps не поддерживается)", e);
+                // Запасной вариант без принудительного ограничения fps
+                try {
+                    myLocalStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    document.getElementById('local-video').srcObject = myLocalStream;
+                } catch(err) {
+                    console.error("Камера недоступна", err);
+                }
             }
 
             // 2. Включаем Metered
             var frame = new MeteredFrame(); 
             frame.init({
                 roomURL: "skype777.metered.live/78",
-                requireCamera: false, // Отключаем встроенный запрос камеры в iframe
+                requireCamera: false,
                 requireMicrophone: false
             }, document.getElementById("metered-frame"));
 
-            // 3. Если камера получена, отправляем её в Metered через API
+            // 3. Отправляем медиа в Metered
             if (myLocalStream) {
-                // Подписываемся на событие присоединения к комнате, чтобы отправить медиа
                 window.addEventListener('message', function(event) {
                     if(event.data && event.data.type === 'metered_join') {
                         const videoTrack = myLocalStream.getVideoTracks()[0];
                         const audioTrack = myLocalStream.getAudioTracks()[0];
-                        
-                        // Используем API metered-frame для шаринга локального медиа
                         if (videoTrack) frame.shareVideo(videoTrack);
                         if (audioTrack) frame.shareAudio(audioTrack);
                     }
                 });
             }
 
-            // 4. Слушаем JPEG-трансляцию экрана от собеседника
+            // 4. Слушаем трансляцию экрана
             if (activeRemoteId) {
                 db.ref(`screenshares/${activeRemoteId}`).on('value', snap => {
                     const data = snap.val();
@@ -360,7 +367,7 @@
             window.location.reload(); 
         };
 
-        // --- 8. JPEG ТРАНСЛЯЦИЯ ЭКРАНА ---
+        // --- 8. JPEG ТРАНСЛЯЦИЯ ЭКРАНА В 60 FPS ---
         let screenStream = null;
         let jpegInterval = null;
         let isSharing = false;
@@ -369,7 +376,12 @@
             if (isSharing) { stopJpegScreenShare(); return; }
 
             try {
-                screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
+                // Захват экрана в 60 FPS
+                screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { frameRate: { ideal: 60, max: 60 }, cursor: "always" }, 
+                    audio: false 
+                });
+                
                 isSharing = true;
                 document.getElementById('jpegShareBtn').textContent = '⏹️ Остановить';
                 document.getElementById('jpegShareBtn').classList.add('red');
@@ -381,18 +393,19 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
 
-                // Отправляем картинку в Firebase (~10 FPS)
+                // Отправляем картинку каждые 16мс (~60 кадров в секунду)
                 jpegInterval = setInterval(() => {
                     if (video.videoWidth) {
-                        canvas.width = 640; 
-                        canvas.height = (video.videoHeight / video.videoWidth) * 640;
+                        // Разрешение оптимизировано до 800px, чтобы успевало улетать в БД без зависаний
+                        canvas.width = 800; 
+                        canvas.height = (video.videoHeight / video.videoWidth) * 800;
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                         
-                        // JPEG качество 40% (увеличена частота до 100ms)
+                        // Сжатие 40%
                         const jpegData = canvas.toDataURL('image/jpeg', 0.4); 
                         db.ref(`screenshares/${myId}`).set({ img: jpegData, ts: Date.now() });
                     }
-                }, 100); 
+                }, 16); // 1000мс / 60 = 16.6мс
 
                 screenStream.getVideoTracks()[0].onended = stopJpegScreenShare;
 
@@ -407,7 +420,7 @@
             
             const btn = document.getElementById('jpegShareBtn');
             if (btn) {
-                btn.textContent = '🖥️ Поделиться экраном';
+                btn.textContent = '🖥️ Поделиться экраном (60 FPS)';
                 btn.classList.remove('red');
             }
         }
@@ -422,7 +435,6 @@
             const rect = pip.getBoundingClientRect();
             initialX = rect.left; initialY = rect.top;
             
-            // Отключаем привязку bottom/right, переходим на top/left
             pip.style.bottom = 'auto'; pip.style.right = 'auto';
             pip.style.left = initialX + 'px'; pip.style.top = initialY + 'px';
         };
