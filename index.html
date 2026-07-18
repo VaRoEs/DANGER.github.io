@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📱 Мобильный Скайп (Firebase)</title>
+    <title>📱 Мобильный Скайп (Финальная версия)</title>
     
     <!-- Подключаем Firebase (версия 8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -178,9 +178,25 @@
         }
         const db = firebase.database();
 
+        // ОБНОВЛЕННЫЕ СЕРВЕРЫ WEBRTC (STUN + TURN ДЛЯ МОБИЛЬНЫХ СЕТЕЙ)
         const servers = {
             iceServers: [
-                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+                {
+                    urls: "turn:openrelay.metered.ca:80",
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                },
+                {
+                    urls: "turn:openrelay.metered.ca:443",
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                },
+                {
+                    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                }
             ]
         };
         
