@@ -2,34 +2,35 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>📱 Мобильный Скайп (WebRTC + Зритель)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📱 Мобильный Скайп (Metered SDK)</title>
     
     <!-- Подключаем Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <!-- Подключаем Metered SDK -->
+    <script src="https://cdn.metered.ca/sdk/frame/1.4.3/sdk-frame.min.js"></script>
 
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         
-        /* Включен скролл страницы */
         body {
-            background: #000; min-height: 100vh; display: flex; 
-            justify-content: center; align-items: center; 
-            overflow-y: auto; overflow-x: hidden;
+            background: #000; min-height: 100vh; height: 100dvh; display: flex; 
+            justify-content: center; align-items: center; overflow: hidden;
         }
         
         .app-container {
-            width: 100vw; min-height: 100vh;
-            background: #0f172a; position: relative;
+            width: 100vw; height: 100vh; height: 100dvh;
+            background: #0f172a; position: relative; overflow: hidden;
             display: flex; flex-direction: column;
         }
 
         /* --- ГЛАВНОЕ МЕНЮ --- */
         #menuScreen {
-            padding: 30px 20px; text-align: center; display: flex; 
+            padding: 30px 20px; text-align: center; height: 100%; display: flex; 
             flex-direction: column; align-items: center; justify-content: center;
-            max-width: 500px; margin: auto; width: 100%; min-height: 100vh;
+            max-width: 500px; margin: 0 auto; width: 100%;
         }
         h1 { color: #fff; font-size: 28px; margin-bottom: 30px; }
         
@@ -65,51 +66,23 @@
         .btn-answer { background: #22c55e; flex: 1; padding: 15px; border-radius: 12px; border: none; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
         .btn-reject { background: #ef4444; flex: 1; padding: 15px; border-radius: 12px; border: none; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
 
-        /* --- ЭКРАН ЗВОНКА --- */
+        /* --- ЭКРАН ЗВОНКА (METERED FRAME) --- */
         #callScreen {
-            display: none; position: absolute; top: 0; left: 0; width: 100%; min-height: 100vh; background: #000;
+            display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000;
         }
         
-        .video-remote {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100vh; 
-            object-fit: contain; z-index: 1; background: #111;
-        }
-        
-        .video-local {
-            display: none; 
-            position: absolute; top: 80px; right: 20px; width: 110px; height: 160px;
-            object-fit: cover; border-radius: 15px; background: #222; border: 2px solid rgba(255,255,255,0.3);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5); transform: scaleX(-1); z-index: 5; transition: opacity 0.3s;
+        #metered-frame {
+            width: 100%; height: 100%; border: none;
         }
 
-        .top-panel {
-            position: absolute; top: 30px; left: 0; right: 0; display: flex; justify-content: center;
-            z-index: 10; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        .btn-leave-wrapper {
+            position: absolute; top: 20px; right: 20px;
+            background: #ef4444; color: white; padding: 12px 20px;
+            border-radius: 12px; font-weight: bold; font-size: 14px;
+            border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            z-index: 9999; transition: 0.2s;
         }
-        .top-panel.hidden { opacity: 0; transform: translateY(-30px); pointer-events: none; }
-        
-        .timer-box {
-            background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); color: white;
-            padding: 8px 20px; border-radius: 30px; font-size: 16px; font-weight: 500; letter-spacing: 1px;
-        }
-
-        .controls-panel {
-            position: absolute; bottom: 40px; left: 0; right: 0;
-            display: flex; justify-content: center; gap: 15px; align-items: center; padding: 0 10px;
-            z-index: 10; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .controls-panel.hidden { opacity: 0; transform: translateY(80px); pointer-events: none; }
-        
-        .circle-btn {
-            width: 55px; height: 55px; border-radius: 50%; border: none; font-size: 22px;
-            display: flex; align-items: center; justify-content: center; cursor: pointer;
-            background: rgba(255,255,255,0.25); backdrop-filter: blur(15px); color: white; transition: 0.2s;
-        }
-        .circle-btn:active { transform: scale(0.9); }
-        .circle-btn.off { background: #fff; color: #000; }
-        
-        .btn-hangup { background: #ef4444; width: 70px; height: 70px; font-size: 32px; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.4); margin: 0 5px; }
-        .btn-hangup:active { transform: scale(0.9); }
+        .btn-leave-wrapper:active { transform: scale(0.95); }
 
         @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
@@ -121,6 +94,7 @@
 <body>
     <div class="app-container">
         
+        <!-- ГЛАВНОЕ МЕНЮ -->
         <div id="menuScreen">
             <h1>Видеочат</h1>
             
@@ -129,13 +103,14 @@
                 <div class="my-id" id="myIdDisplay">0000</div>
             </div>
             
-            <div class="status" id="status">🎤 Проверка оборудования...</div>
+            <div class="status success" id="status">🔥 В сети. Ожидание вызовов...</div>
             
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             <button class="btn-call" id="connectBtn">Позвонить</button>
             
+            <!-- Уведомление о входящем звонке -->
             <div class="incoming-box" id="incomingCall">
-                <p>📞 Звонок от ID: <strong id="callerIdDisplay">...</strong></p>
+                <p>📞 Входящий вызов: <strong id="callerIdDisplay">...</strong></p>
                 <div class="action-buttons">
                     <button class="btn-answer" id="answerBtn">Принять</button>
                     <button class="btn-reject" id="rejectBtn">Отклонить</button>
@@ -143,27 +118,16 @@
             </div>
         </div>
 
+        <!-- ЭКРАН ЗВОНКА (Здесь работает Metered) -->
         <div id="callScreen">
-            <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
-            <video id="localVideo" class="video-local" autoplay muted playsinline></video>
-            
-            <div class="top-panel" id="topPanel">
-                <div class="timer-box" id="timerDisplay">Подключение...</div>
-            </div>
-            
-            <div class="controls-panel" id="controlsPanel">
-                <button class="circle-btn" id="toggleMicBtn">🎤</button>
-                <button class="circle-btn" id="toggleCamBtn">📷</button>
-                <button class="circle-btn btn-hangup" id="hangupBtn">📞</button>
-                <button class="circle-btn" id="flipCamBtn">🔄</button>
-                <button class="circle-btn off" id="togglePipBtn">👁️</button>
-            </div>
+            <div id="metered-frame"></div>
+            <button class="btn-leave-wrapper" id="leaveCallBtn">Выйти из звонка</button>
         </div>
 
     </div>
     
     <script>
-        // Настройки Firebase
+        // --- 1. НАСТРОЙКИ FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
             authDomain: "skype7q.firebaseapp.com",
@@ -180,49 +144,20 @@
         }
         const db = firebase.database();
 
-        // Серверы WebRTC
-        const servers = {
-            iceServers: [
-                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
-                {
-                    urls: "turn:openrelay.metered.ca:80",
-                    username: "openrelayproject",
-                    credential: "openrelayproject"
-                },
-                {
-                    urls: "turn:openrelay.metered.ca:443",
-                    username: "openrelayproject",
-                    credential: "openrelayproject"
-                },
-                {
-                    urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                    username: "openrelayproject",
-                    credential: "openrelayproject"
-                }
-            ]
-        };
-        
+        // --- 2. ГЕНЕРАЦИЯ ID ---
         let myId = localStorage.getItem('my_skype_id');
         if (!myId) {
             myId = Math.floor(1000 + Math.random() * 9000).toString();
             localStorage.setItem('my_skype_id', myId);
         }
         document.getElementById('myIdDisplay').textContent = myId;
-        
-        let localStream = null;
-        let peerConnection = null;
-        let remoteId = null;
-        let incomingCallerId = null;
-        let callActive = false;
-        
-        let callTimer = null;
-        let callSeconds = 0;
-        let hideControlsTimeout = null;
 
-        let isVideoEnabled = true; 
-        let isAudioEnabled = true;
-        let isPipVisible = false;
-        let currentFacingMode = 'user'; 
+        // ВАЖНО: Очищаем зависшие статусы в базе при загрузке
+        db.ref(`calls/${myId}`).remove();
+
+        // --- 3. ЛОГИКА ИНТЕРФЕЙСА ---
+        let inCall = false; // Статус: разговариваем мы сейчас или нет
+        let currentCallRef = null;
 
         function updateStatus(msg, type = '') {
             const el = document.getElementById('status');
@@ -230,307 +165,125 @@
             el.className = 'status ' + type;
         }
 
-        function switchScreen(isCalling) {
-            if (isCalling) {
-                document.getElementById('menuScreen').style.display = 'none';
-                document.getElementById('callScreen').style.display = 'block';
-                showControls();
-            } else {
-                document.getElementById('menuScreen').style.display = 'flex';
-                document.getElementById('callScreen').style.display = 'none';
-                stopTimer();
-                clearTimeout(hideControlsTimeout);
-            }
+        function resetCallButton() {
+            const btn = document.getElementById('connectBtn');
+            btn.textContent = 'Позвонить';
+            btn.style.background = '#22c55e';
+            btn.onclick = initiateCall;
         }
 
-        function showControls() {
-            const controls = document.getElementById('controlsPanel');
-            const top = document.getElementById('topPanel');
-            controls.classList.remove('hidden');
-            top.classList.remove('hidden');
-            
-            clearTimeout(hideControlsTimeout);
-            hideControlsTimeout = setTimeout(() => {
-                controls.classList.add('hidden');
-                top.classList.add('hidden');
-            }, 3500);
-        }
-
-        document.getElementById('callScreen').addEventListener('mousemove', showControls);
-        document.getElementById('callScreen').addEventListener('touchstart', showControls);
-        document.getElementById('callScreen').addEventListener('click', showControls);
-
-        function startTimer() {
-            callSeconds = 0;
-            const timerEl = document.getElementById('timerDisplay');
-            timerEl.textContent = "00:00";
-            if (callTimer) clearInterval(callTimer);
-            callTimer = setInterval(() => {
-                callSeconds++;
-                const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
-                const secs = String(callSeconds % 60).padStart(2, '0');
-                timerEl.textContent = `${mins}:${secs}`;
-            }, 1000);
-        }
-
-        function stopTimer() {
-            if (callTimer) clearInterval(callTimer);
-            document.getElementById('timerDisplay').textContent = "Подключение...";
-        }
-
-        async function startMedia() {
-            try {
-                // Попытка 1: Камера + Микрофон
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true },
-                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: currentFacingMode }
-                });
-                
-                isVideoEnabled = true;
-                isAudioEnabled = true;
-                document.getElementById('localVideo').srcObject = localStream;
-                updateStatus('🔥 В сети. Готов к звонкам!', 'success');
-            } catch (e) {
-                console.warn("Нет камеры, пробуем только звук");
-                try {
-                    // Попытка 2: Только микрофон
-                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                    isVideoEnabled = false;
-                    isAudioEnabled = true;
-                    document.getElementById('toggleCamBtn').style.display = 'none'; 
-                    document.getElementById('flipCamBtn').style.display = 'none'; 
-                    document.getElementById('togglePipBtn').style.display = 'none'; 
-                    updateStatus('🔥 Режим аудио. Готов!', 'success');
-                } catch (err) {
-                    // Попытка 3: ПК без камеры и без микрофона (РЕЖИМ ЗРИТЕЛЯ)
-                    console.warn("Нет медиа-устройств. Запуск в режиме зрителя.");
-                    localStream = null;
-                    isVideoEnabled = false;
-                    isAudioEnabled = false;
-                    
-                    // Прячем лишние кнопки
-                    document.getElementById('toggleCamBtn').style.display = 'none'; 
-                    document.getElementById('toggleMicBtn').style.display = 'none'; 
-                    document.getElementById('flipCamBtn').style.display = 'none'; 
-                    document.getElementById('togglePipBtn').style.display = 'none'; 
-                    
-                    updateStatus('👁️ Режим зрителя (ПК без камеры/микрофона)', 'warning');
-                }
-            }
-        }
-
-        // --- Управление медиа ---
-        document.getElementById('toggleMicBtn').onclick = (e) => {
-            e.stopPropagation();
-            if (localStream && localStream.getAudioTracks().length > 0) {
-                isAudioEnabled = !isAudioEnabled;
-                localStream.getAudioTracks()[0].enabled = isAudioEnabled;
-                const btn = document.getElementById('toggleMicBtn');
-                btn.classList.toggle('off', !isAudioEnabled);
-                btn.textContent = isAudioEnabled ? '🎤' : '🔇';
-            }
-            showControls();
-        };
-
-        document.getElementById('toggleCamBtn').onclick = (e) => {
-            e.stopPropagation();
-            if (localStream && localStream.getVideoTracks().length > 0) {
-                isVideoEnabled = !isVideoEnabled;
-                localStream.getVideoTracks()[0].enabled = isVideoEnabled;
-                const btn = document.getElementById('toggleCamBtn');
-                btn.classList.toggle('off', !isVideoEnabled);
-                btn.textContent = isVideoEnabled ? '📷' : '🚫';
-            }
-            showControls();
-        };
-
-        async function flipCamera() {
-            if (!localStream) return;
-            const oldTrack = localStream.getVideoTracks()[0];
-            if (oldTrack) oldTrack.stop();
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            try {
-                const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } } });
-                const newTrack = newStream.getVideoTracks()[0];
-                newTrack.enabled = isVideoEnabled; 
-                localStream.removeTrack(oldTrack);
-                localStream.addTrack(newTrack);
-                document.getElementById('localVideo').srcObject = localStream;
-                if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(newTrack);
-                }
-                document.getElementById('localVideo').style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
-            } catch (e) { console.error(e); }
-        }
-
-        document.getElementById('flipCamBtn').onclick = (e) => { e.stopPropagation(); flipCamera(); showControls(); };
-        
-        document.getElementById('togglePipBtn').onclick = (e) => {
-            e.stopPropagation();
-            isPipVisible = !isPipVisible;
-            document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-            showControls();
-        };
-
-        // --- ЛОГИКА WEBRTC И FIREBASE ---
-        
-        function setupPeerConnection() {
-            peerConnection = new RTCPeerConnection(servers);
-            
-            if (localStream) {
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                if (localStream.getVideoTracks().length === 0) {
-                    peerConnection.addTransceiver('video', { direction: 'recvonly' });
-                }
-            } else {
-                // Если нет ни микрофона, ни камеры (режим зрителя)
-                peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-                peerConnection.addTransceiver('video', { direction: 'recvonly' });
-            }
-
-            peerConnection.ontrack = event => {
-                const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.srcObject !== event.streams[0]) {
-                    remoteVid.srcObject = event.streams[0];
-                    startTimer();
-                }
-            };
-            
-            peerConnection.onconnectionstatechange = () => {
-                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-                    hangup();
-                }
-            };
-        }
-
-        // Слушаем входящие звонки к нам
+        // --- 4. СЛУШАЕМ ВХОДЯЩИЕ ЗВОНКИ ---
         db.ref(`calls/${myId}`).on('value', snapshot => {
-            if (callActive) return; // Если уже говорим - игнорим
             const data = snapshot.val();
             
-            if (data && data.offer) {
-                incomingCallerId = data.callerId;
-                document.getElementById('callerIdDisplay').textContent = incomingCallerId;
+            if (data && data.status === 'ringing') {
+                if (inCall) {
+                    // Если мы уже разговариваем - отдаем статус "Занято" (отклонено)
+                    db.ref(`calls/${myId}`).update({ status: 'rejected' });
+                    return;
+                }
+                
+                // Показываем окно входящего вызова
+                document.getElementById('callerIdDisplay').textContent = data.callerId;
                 document.getElementById('incomingCall').classList.add('active');
+                updateStatus('📞 Входящий вызов...', 'warning');
+            } 
+            else {
+                // Если звонящий отменил вызов (узел пропал или статус изменился)
+                document.getElementById('incomingCall').classList.remove('active');
+                if (!inCall) {
+                    updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
+                }
             }
         });
 
-        // Слушаем сброс звонка
-        db.ref(`calls/${myId}/hangup`).on('value', snapshot => {
-            if (snapshot.val() && callActive) {
-                hangup(); // Собеседник повесил трубку
+        // --- 5. ФУНКЦИЯ ИСХОДЯЩЕГО ЗВОНКА ---
+        function initiateCall() {
+            const remoteId = document.getElementById('remoteId').value.trim();
+            if (!remoteId || remoteId === myId || remoteId.length !== 4) {
+                return alert('Введи 4 цифры ID друга');
             }
-        });
-
-        document.getElementById('connectBtn').onclick = async () => {
-            remoteId = document.getElementById('remoteId').value.trim();
-            if (!remoteId || remoteId === myId || remoteId.length !== 4) return alert('Введи 4 цифры ID друга');
             
-            switchScreen(true);
-            callActive = true;
-            setupPeerConnection();
+            inCall = true;
+            updateStatus('Дозвон...', 'warning');
+            
+            // Превращаем кнопку "Позвонить" в кнопку "Отменить"
+            const btn = document.getElementById('connectBtn');
+            btn.textContent = 'Отменить вызов';
+            btn.style.background = '#ef4444';
+            
+            currentCallRef = db.ref(`calls/${remoteId}`);
+            currentCallRef.set({ callerId: myId, status: 'ringing' });
 
-            // Создаем канал для звонка (мы - Caller)
-            const callDoc = db.ref(`calls/${remoteId}`);
-            const offerCandidates = db.ref(`calls/${remoteId}/offerCandidates`);
-            const answerCandidates = db.ref(`calls/${remoteId}/answerCandidates`);
-
-            peerConnection.onicecandidate = event => {
-                if (event.candidate) offerCandidates.push(event.candidate.toJSON());
+            // Логика отмены вызова
+            btn.onclick = () => {
+                currentCallRef.remove(); // Удаляем вызов у друга
+                currentCallRef.off();    // Отписываемся от прослушивания
+                inCall = false;
+                resetCallButton();
+                updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
             };
 
-            const offerDescription = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offerDescription);
-
-            const offer = {
-                sdp: offerDescription.sdp,
-                type: offerDescription.type,
-            };
-            
-            await callDoc.set({ offer, callerId: myId });
-
-            // Слушаем, когда друг ответит (Answer)
-            callDoc.on('value', snapshot => {
+            // Ждем ответа от друга
+            currentCallRef.on('value', snapshot => {
                 const data = snapshot.val();
-                if (!peerConnection.currentRemoteDescription && data && data.answer) {
-                    const answerDescription = new RTCSessionDescription(data.answer);
-                    peerConnection.setRemoteDescription(answerDescription);
+                if (data && data.status === 'answered') {
+                    // Друг ответил
+                    currentCallRef.off();
+                    currentCallRef.remove(); // Чистим базу перед входом в комнату
+                    startMeteredCall();
+                } else if (data && data.status === 'rejected') {
+                    // Друг сбросил или занят
+                    currentCallRef.off();
+                    inCall = false;
+                    resetCallButton();
+                    updateStatus('Вызов отклонен или занято', 'warning');
+                    setTimeout(() => updateStatus('🔥 В сети. Ожидание вызовов...', 'success'), 3000);
                 }
             });
+        }
 
-            // Слушаем чужие ICE кандидаты
-            answerCandidates.on('child_added', data => {
-                const candidate = new RTCIceCandidate(data.val());
-                peerConnection.addIceCandidate(candidate);
-            });
-        };
+        // Привязываем функцию к кнопке
+        document.getElementById('connectBtn').onclick = initiateCall;
 
-        document.getElementById('answerBtn').onclick = async () => {
+        // --- 6. КНОПКИ ПРИНЯТЬ/ОТКЛОНИТЬ ВХОДЯЩИЙ ---
+        document.getElementById('answerBtn').onclick = () => {
+            inCall = true;
             document.getElementById('incomingCall').classList.remove('active');
-            switchScreen(true);
-            callActive = true;
-            setupPeerConnection();
-
-            const callDoc = db.ref(`calls/${myId}`);
-            const answerCandidates = db.ref(`calls/${myId}/answerCandidates`);
-            const offerCandidates = db.ref(`calls/${myId}/offerCandidates`);
-
-            peerConnection.onicecandidate = event => {
-                if (event.candidate) answerCandidates.push(event.candidate.toJSON());
-            };
-
-            const callData = (await callDoc.get()).val();
-            const offerDescription = callData.offer;
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-            const answerDescription = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answerDescription);
-
-            const answer = {
-                type: answerDescription.type,
-                sdp: answerDescription.sdp,
-            };
-            await callDoc.update({ answer });
-
-            offerCandidates.on('child_added', data => {
-                peerConnection.addIceCandidate(new RTCIceCandidate(data.val()));
-            });
+            
+            // Сообщаем звонящему, что мы приняли вызов
+            db.ref(`calls/${myId}`).update({ status: 'answered' });
+            startMeteredCall(); // Запускаем видео
         };
 
         document.getElementById('rejectBtn').onclick = () => {
             document.getElementById('incomingCall').classList.remove('active');
-            db.ref(`calls/${myId}`).remove(); // Очищаем базу от звонка
+            
+            // Сообщаем звонящему об отказе
+            db.ref(`calls/${myId}`).update({ status: 'rejected' });
+            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000); // Чистим базу
+            updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
         };
 
-        function hangup() {
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-            document.getElementById('remoteVideo').srcObject = null;
-            callActive = false;
-            switchScreen(false);
+        // --- 7. ЗАПУСК METERED SDK ---
+        function startMeteredCall() {
+            // Прячем меню, показываем экран звонка
+            document.getElementById('menuScreen').style.display = 'none';
+            document.getElementById('callScreen').style.display = 'block';
             
-            // Сообщаем собеседнику, что мы сбросили и чистим базу
-            const target = remoteId || incomingCallerId;
-            if (target) {
-                db.ref(`calls/${target}`).update({ hangup: true });
-                db.ref(`calls/${myId}`).remove();
-                setTimeout(() => db.ref(`calls/${target}`).remove(), 1000);
-            }
-            remoteId = null;
-            incomingCallerId = null;
+            var frame = new MeteredFrame(); 
+            frame.init({
+                roomURL: "skype777.metered.live/78", // Твоя комната Metered
+            }, document.getElementById("metered-frame"));
         }
 
-        document.getElementById('hangupBtn').onclick = (e) => { e.stopPropagation(); hangup(); };
+        // --- 8. ВЫХОД ИЗ ЗВОНКА ---
+        document.getElementById('leaveCallBtn').onclick = () => {
+            // Удаляем возможные следы в базе перед выходом
+            db.ref(`calls/${myId}`).remove(); 
+            window.location.reload(); 
+        };
 
-        // Очищаем звонки при закрытии вкладки
-        window.onbeforeunload = hangup;
-
-        // Инициализируем медиа при загрузке страницы
-        startMedia();
     </script>
 </body>
 </html>
