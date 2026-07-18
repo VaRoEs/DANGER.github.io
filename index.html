@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📱 Мобильный Скайп (Metered SDK)</title>
+    <title>Win7 Скайп</title>
     
     <!-- Подключаем Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -13,119 +13,177 @@
     <script src="https://cdn.metered.ca/sdk/frame/1.4.3/sdk-frame.min.js"></script>
 
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        /* --- СТИЛЬ WINDOWS 7 AERO GLASS --- */
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
         body {
-            background: #000; min-height: 100vh; height: 100dvh; display: flex; 
+            /* Имитация обоев Windows 7 */
+            background: radial-gradient(circle at 50% 100%, #2989D8 0%, #155A8A 50%, #00284F 100%);
+            min-height: 100vh; height: 100dvh; display: flex; 
             justify-content: center; align-items: center; overflow: hidden;
         }
         
-        .app-container {
-            width: 100vw; height: 100vh; height: 100dvh;
-            background: #0f172a; position: relative; overflow: hidden;
+        .aero-window {
+            width: 95%; max-width: 450px;
+            /* Эффект стекла */
+            background: rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 0 15px rgba(0,0,0,0.5), inset 0 0 25px rgba(255,255,255,0.7);
+            border-radius: 8px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            position: relative;
             display: flex; flex-direction: column;
         }
 
-        /* --- ГЛАВНОЕ МЕНЮ --- */
-        #menuScreen {
-            padding: 30px 20px; text-align: center; height: 100%; display: flex; 
-            flex-direction: column; align-items: center; justify-content: center;
-            max-width: 500px; margin: 0 auto; width: 100%;
+        .title-bar {
+            background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(220,220,220,0.3) 100%);
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.5);
+            border-top-left-radius: 7px; border-top-right-radius: 7px;
+            display: flex; justify-content: space-between; align-items: center;
         }
-        h1 { color: #fff; font-size: 28px; margin-bottom: 30px; }
+        .title-bar .title {
+            color: #000; font-size: 14px; font-weight: 600; text-shadow: 0 0 5px #fff, 0 0 10px #fff;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .title-bar .controls {
+            display: flex; gap: 4px;
+        }
+        .win-btn {
+            width: 26px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); cursor: pointer;
+        }
+        .win-btn.close {
+            background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%);
+        }
+
+        .content-area {
+            background: #fff;
+            margin: 0 5px 5px 5px; border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.3);
+            padding: 20px; display: flex; flex-direction: column; align-items: center;
+        }
+
+        h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
         
-        .id-box { background: #1e293b; padding: 25px; border-radius: 20px; margin-bottom: 25px; width: 100%; border: 1px solid #334155; }
-        .id-box p { color: #94a3b8; font-size: 14px; margin-bottom: 5px; }
-        .my-id { font-size: 48px; font-weight: bold; color: #38bdf8; letter-spacing: 5px; }
+        .id-box { 
+            background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; 
+            width: 100%; border: 1px solid #cdd8e4; text-align: center;
+        }
+        .id-box p { color: #555; font-size: 13px; margin-bottom: 5px; }
+        .my-id { font-size: 36px; color: #003399; letter-spacing: 3px; font-family: 'Consolas', monospace; }
         
-        .status { padding: 12px; border-radius: 10px; color: #fff; font-weight: 500; margin-bottom: 25px; font-size: 15px; background: rgba(255,255,255,0.1); width: 100%; }
-        .status.success { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-        .status.warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .status { 
+            padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 20px; 
+            font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
+        }
+        .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
+        .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
         
         input {
-            width: 100%; padding: 20px; border: none; border-radius: 15px; font-size: 20px;
-            background: #1e293b; color: white; text-align: center; margin-bottom: 15px; outline: none;
-            border: 2px solid transparent; transition: 0.3s;
+            width: 100%; padding: 10px; border: 1px solid #abadb3; border-radius: 3px; font-size: 18px;
+            text-align: center; margin-bottom: 15px; outline: none; background: #fff;
         }
-        input:focus { border-color: #38bdf8; }
-        input::placeholder { color: #475569; }
+        input:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
         
-        .btn-call {
-            width: 100%; padding: 20px; border: none; border-radius: 15px; font-size: 20px; font-weight: bold;
-            background: #22c55e; color: white; cursor: pointer; transition: 0.2s;
+        /* Глянцевые кнопки Windows 7 */
+        .glossy-btn {
+            width: 100%; padding: 10px; border-radius: 3px; font-size: 15px;
+            background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
+            border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
         }
-        .btn-call:active { transform: scale(0.95); }
+        .glossy-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
+        .glossy-btn:active { background: linear-gradient(to bottom, #a7d9f5 0%, #bee6fd 49%, #d6f0fd 50%, #f2f9fe 100%); box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
         
+        .glossy-btn.green {
+            background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%);
+            border-color: #7fbf7f;
+        }
+        .glossy-btn.red {
+            background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
+            border-color: #bf7f7f;
+        }
+
         .incoming-box {
-            display: none; background: rgba(56, 189, 248, 0.1); border: 2px solid #38bdf8;
-            padding: 20px; border-radius: 20px; margin-top: 30px; width: 100%; animation: pulse 1.5s infinite;
+            display: none; background: #ffffcc; border: 1px solid #ffcc00;
+            padding: 15px; border-radius: 3px; margin-top: 15px; width: 100%; text-align: center;
         }
         .incoming-box.active { display: block; }
-        .incoming-box p { color: white; font-size: 18px; margin-bottom: 15px; }
-        .action-buttons { display: flex; gap: 10px; }
-        .btn-answer { background: #22c55e; flex: 1; padding: 15px; border-radius: 12px; border: none; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .btn-reject { background: #ef4444; flex: 1; padding: 15px; border-radius: 12px; border: none; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .incoming-box p { color: #333; font-size: 15px; margin-bottom: 10px; }
+        .action-buttons { display: flex; gap: 5px; }
 
-        /* --- ЭКРАН ЗВОНКА (METERED FRAME) --- */
+        /* --- ЭКРАН ЗВОНКА --- */
         #callScreen {
-            display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000;
+            display: none; width: 100%; height: 100%; position: absolute;
+            top: 0; left: 0; background: #000;
         }
+        #metered-frame { width: 100%; height: 100%; border: none; }
         
-        #metered-frame {
-            width: 100%; height: 100%; border: none;
+        #jpeg-screen-viewer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: contain; background: #000; z-index: 50; display: none;
         }
 
-        .btn-leave-wrapper {
-            position: absolute; top: 20px; right: 20px;
-            background: #ef4444; color: white; padding: 12px 20px;
-            border-radius: 12px; font-weight: bold; font-size: 14px;
-            border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            z-index: 9999; transition: 0.2s;
-        }
-        .btn-leave-wrapper:active { transform: scale(0.95); }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
-            70% { box-shadow: 0 0 0 15px rgba(56, 189, 248, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+        .call-controls {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; z-index: 100;
+            background: rgba(255,255,255,0.3); padding: 10px; border-radius: 10px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
         }
     </style>
 </head>
 <body>
-    <div class="app-container">
+    <div class="aero-window" id="mainWindow">
+        <div class="title-bar">
+            <div class="title">📱 Windows 7 Skype</div>
+            <div class="controls">
+                <button class="win-btn" style="background: linear-gradient(to bottom, #f0f0f0, #ccc);"></button>
+                <button class="win-btn close" onclick="window.close()"></button>
+            </div>
+        </div>
         
-        <!-- ГЛАВНОЕ МЕНЮ -->
-        <div id="menuScreen">
-            <h1>Видеочат</h1>
+        <div class="content-area" id="menuScreen">
+            <h2>Ваш профиль</h2>
             
             <div class="id-box">
                 <p>Твой постоянный ID:</p>
                 <div class="my-id" id="myIdDisplay">0000</div>
             </div>
             
-            <div class="status success" id="status">🔥 В сети. Ожидание вызовов...</div>
+            <div class="status success" id="status">В сети. Ожидание вызовов...</div>
             
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
-            <button class="btn-call" id="connectBtn">Позвонить</button>
             
-            <!-- Уведомление о входящем звонке -->
+            <button class="glossy-btn" id="connectBtn" style="margin-bottom: 10px;">📞 Позвонить</button>
+            <button class="glossy-btn" id="jpegShareBtn" style="font-size: 13px;">🖥️ Поделиться экраном (JPEG)</button>
+            
             <div class="incoming-box" id="incomingCall">
-                <p>📞 Входящий вызов: <strong id="callerIdDisplay">...</strong></p>
+                <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
                 <div class="action-buttons">
-                    <button class="btn-answer" id="answerBtn">Принять</button>
-                    <button class="btn-reject" id="rejectBtn">Отклонить</button>
+                    <button class="glossy-btn green" id="answerBtn">Принять</button>
+                    <button class="glossy-btn red" id="rejectBtn">Отклонить</button>
                 </div>
             </div>
         </div>
-
-        <!-- ЭКРАН ЗВОНКА (Здесь работает Metered) -->
-        <div id="callScreen">
-            <div id="metered-frame"></div>
-            <button class="btn-leave-wrapper" id="leaveCallBtn">Выйти из звонка</button>
-        </div>
-
     </div>
-    
+
+    <!-- ЭКРАН ЗВОНКА -->
+    <div id="callScreen">
+        <!-- Сюда вставляется видеосвязь Metered -->
+        <div id="metered-frame"></div>
+        
+        <!-- Сюда вставляется JPEG-трансляция экрана, если она активна -->
+        <img id="jpeg-screen-viewer" alt="Трансляция экрана" />
+        
+        <div class="call-controls">
+            <button class="glossy-btn red" id="leaveCallBtn">Завершить</button>
+        </div>
+    </div>
+
     <script>
         // --- 1. НАСТРОЙКИ FIREBASE ---
         const firebaseConfig = {
@@ -135,155 +193,185 @@
             projectId: "skype7q",
             storageBucket: "skype7q.firebasestorage.app",
             messagingSenderId: "4846139446",
-            appId: "1:4846139446:web:f2b24c3da4d0887f3a8097",
-            measurementId: "G-7L0F495NGJ"
+            appId: "1:4846139446:web:f2b24c3da4d0887f3a8097"
         };
-
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
+        if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
         const db = firebase.database();
 
-        // --- 2. ГЕНЕРАЦИЯ ID ---
+        // --- 2. ИДЕНТИФИКАЦИЯ ---
         let myId = localStorage.getItem('my_skype_id');
         if (!myId) {
             myId = Math.floor(1000 + Math.random() * 9000).toString();
             localStorage.setItem('my_skype_id', myId);
         }
         document.getElementById('myIdDisplay').textContent = myId;
+        db.ref(`calls/${myId}`).remove(); // Очистка при загрузке
 
-        // ВАЖНО: Очищаем зависшие статусы в базе при загрузке
-        db.ref(`calls/${myId}`).remove();
+        let inCall = false;
+        let activeRemoteId = null; 
 
-        // --- 3. ЛОГИКА ИНТЕРФЕЙСА ---
-        let inCall = false; // Статус: разговариваем мы сейчас или нет
-        let currentCallRef = null;
-
-        function updateStatus(msg, type = '') {
+        // --- 3. ИНТЕРФЕЙС ---
+        function updateStatus(msg, type = 'success') {
             const el = document.getElementById('status');
-            el.textContent = msg;
-            el.className = 'status ' + type;
+            el.textContent = msg; el.className = 'status ' + type;
         }
 
-        function resetCallButton() {
-            const btn = document.getElementById('connectBtn');
-            btn.textContent = 'Позвонить';
-            btn.style.background = '#22c55e';
-            btn.onclick = initiateCall;
-        }
-
-        // --- 4. СЛУШАЕМ ВХОДЯЩИЕ ЗВОНКИ ---
+        // --- 4. ВХОДЯЩИЕ ЗВОНКИ ---
         db.ref(`calls/${myId}`).on('value', snapshot => {
             const data = snapshot.val();
-            
             if (data && data.status === 'ringing') {
-                if (inCall) {
-                    // Если мы уже разговариваем - отдаем статус "Занято" (отклонено)
-                    db.ref(`calls/${myId}`).update({ status: 'rejected' });
-                    return;
-                }
-                
-                // Показываем окно входящего вызова
+                if (inCall) { db.ref(`calls/${myId}`).update({ status: 'rejected' }); return; }
+                activeRemoteId = data.callerId;
                 document.getElementById('callerIdDisplay').textContent = data.callerId;
                 document.getElementById('incomingCall').classList.add('active');
-                updateStatus('📞 Входящий вызов...', 'warning');
-            } 
-            else {
-                // Если звонящий отменил вызов (узел пропал или статус изменился)
+                updateStatus('Входящий вызов...', 'warning');
+            } else {
                 document.getElementById('incomingCall').classList.remove('active');
-                if (!inCall) {
-                    updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
-                }
+                if (!inCall) updateStatus('В сети. Ожидание вызовов...', 'success');
             }
         });
 
-        // --- 5. ФУНКЦИЯ ИСХОДЯЩЕГО ЗВОНКА ---
-        function initiateCall() {
+        // --- 5. ИСХОДЯЩИЙ ЗВОНОК ---
+        document.getElementById('connectBtn').onclick = () => {
             const remoteId = document.getElementById('remoteId').value.trim();
-            if (!remoteId || remoteId === myId || remoteId.length !== 4) {
-                return alert('Введи 4 цифры ID друга');
-            }
+            if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
             
             inCall = true;
+            activeRemoteId = remoteId;
             updateStatus('Дозвон...', 'warning');
             
-            // Превращаем кнопку "Позвонить" в кнопку "Отменить"
             const btn = document.getElementById('connectBtn');
             btn.textContent = 'Отменить вызов';
-            btn.style.background = '#ef4444';
             
-            currentCallRef = db.ref(`calls/${remoteId}`);
-            currentCallRef.set({ callerId: myId, status: 'ringing' });
+            let callRef = db.ref(`calls/${remoteId}`);
+            callRef.set({ callerId: myId, status: 'ringing' });
 
-            // Логика отмены вызова
             btn.onclick = () => {
-                currentCallRef.remove(); // Удаляем вызов у друга
-                currentCallRef.off();    // Отписываемся от прослушивания
-                inCall = false;
-                resetCallButton();
-                updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
+                callRef.remove(); callRef.off(); inCall = false; activeRemoteId = null;
+                btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
+                updateStatus('В сети', 'success');
             };
 
-            // Ждем ответа от друга
-            currentCallRef.on('value', snapshot => {
-                const data = snapshot.val();
+            callRef.on('value', snap => {
+                const data = snap.val();
                 if (data && data.status === 'answered') {
-                    // Друг ответил
-                    currentCallRef.off();
-                    currentCallRef.remove(); // Чистим базу перед входом в комнату
-                    startMeteredCall();
+                    callRef.off(); callRef.remove(); startMeteredCall();
                 } else if (data && data.status === 'rejected') {
-                    // Друг сбросил или занят
-                    currentCallRef.off();
-                    inCall = false;
-                    resetCallButton();
-                    updateStatus('Вызов отклонен или занято', 'warning');
-                    setTimeout(() => updateStatus('🔥 В сети. Ожидание вызовов...', 'success'), 3000);
+                    callRef.off(); inCall = false; activeRemoteId = null;
+                    btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
+                    updateStatus('Отклонено/Занято', 'warning');
+                    setTimeout(() => updateStatus('В сети', 'success'), 3000);
                 }
             });
-        }
-
-        // Привязываем функцию к кнопке
-        document.getElementById('connectBtn').onclick = initiateCall;
-
-        // --- 6. КНОПКИ ПРИНЯТЬ/ОТКЛОНИТЬ ВХОДЯЩИЙ ---
-        document.getElementById('answerBtn').onclick = () => {
-            inCall = true;
-            document.getElementById('incomingCall').classList.remove('active');
-            
-            // Сообщаем звонящему, что мы приняли вызов
-            db.ref(`calls/${myId}`).update({ status: 'answered' });
-            startMeteredCall(); // Запускаем видео
         };
 
+        // --- 6. ПРИНЯТЬ / ОТКЛОНИТЬ ---
+        document.getElementById('answerBtn').onclick = () => {
+            inCall = true; document.getElementById('incomingCall').classList.remove('active');
+            db.ref(`calls/${myId}`).update({ status: 'answered' });
+            startMeteredCall();
+        };
         document.getElementById('rejectBtn').onclick = () => {
             document.getElementById('incomingCall').classList.remove('active');
-            
-            // Сообщаем звонящему об отказе
             db.ref(`calls/${myId}`).update({ status: 'rejected' });
-            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000); // Чистим базу
-            updateStatus('🔥 В сети. Ожидание вызовов...', 'success');
+            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000);
+            updateStatus('В сети', 'success');
         };
 
-        // --- 7. ЗАПУСК METERED SDK ---
+        // --- 7. METERED SDK & ПРОСЛУШИВАНИЕ JPEG ---
         function startMeteredCall() {
-            // Прячем меню, показываем экран звонка
-            document.getElementById('menuScreen').style.display = 'none';
+            document.getElementById('mainWindow').style.display = 'none';
             document.getElementById('callScreen').style.display = 'block';
             
+            // Включаем Metered с разрешением входа без камеры (requireCamera: false)
             var frame = new MeteredFrame(); 
             frame.init({
-                roomURL: "skype777.metered.live/78", // Твоя комната Metered
+                roomURL: "skype777.metered.live/78",
+                requireCamera: false,
+                requireMicrophone: false
             }, document.getElementById("metered-frame"));
+
+            // Слушаем JPEG-трансляцию от собеседника
+            if (activeRemoteId) {
+                db.ref(`screenshares/${activeRemoteId}`).on('value', snap => {
+                    const data = snap.val();
+                    const viewer = document.getElementById('jpeg-screen-viewer');
+                    if(data && data.img) {
+                        viewer.src = data.img;
+                        viewer.style.display = 'block';
+                    } else {
+                        viewer.style.display = 'none';
+                    }
+                });
+            }
         }
 
-        // --- 8. ВЫХОД ИЗ ЗВОНКА ---
+        // Завершение звонка
         document.getElementById('leaveCallBtn').onclick = () => {
-            // Удаляем возможные следы в базе перед выходом
-            db.ref(`calls/${myId}`).remove(); 
+            db.ref(`calls/${myId}`).remove();
+            if(activeRemoteId) db.ref(`screenshares/${activeRemoteId}`).off();
+            stopJpegScreenShare(); // Останавливаем свою шару, если есть
             window.location.reload(); 
         };
 
+        // --- 8. JPEG ТРАНСЛЯЦИЯ ЭКРАНА (АЛЬТЕРНАТИВНЫЙ РЕЖИМ) ---
+        let screenStream = null;
+        let jpegInterval = null;
+        let isSharing = false;
+
+        document.getElementById('jpegShareBtn').onclick = async () => {
+            if (isSharing) {
+                stopJpegScreenShare();
+                return;
+            }
+
+            try {
+                // Захват экрана (работает на ПК и Android)
+                screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
+                isSharing = true;
+                document.getElementById('jpegShareBtn').textContent = '⏹️ Остановить трансляцию';
+                document.getElementById('jpegShareBtn').classList.add('red');
+
+                const video = document.createElement('video');
+                video.srcObject = screenStream;
+                video.play();
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Отправляем картинку в Firebase 3 раза в секунду
+                jpegInterval = setInterval(() => {
+                    if (video.videoWidth) {
+                        // Сжимаем для скорости
+                        canvas.width = 640; 
+                        canvas.height = (video.videoHeight / video.videoWidth) * 640;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        
+                        // JPEG качество 40%
+                        const jpegData = canvas.toDataURL('image/jpeg', 0.4); 
+                        db.ref(`screenshares/${myId}`).set({ img: jpegData, ts: Date.now() });
+                    }
+                }, 333); // 3 FPS
+
+                screenStream.getVideoTracks()[0].onended = stopJpegScreenShare;
+
+            } catch (e) {
+                alert('Не удалось захватить экран. ' + e.message);
+            }
+        };
+
+        function stopJpegScreenShare() {
+            isSharing = false;
+            clearInterval(jpegInterval);
+            if(screenStream) screenStream.getTracks().forEach(t => t.stop());
+            db.ref(`screenshares/${myId}`).remove();
+            
+            const btn = document.getElementById('jpegShareBtn');
+            if (btn) {
+                btn.textContent = '🖥️ Поделиться экраном (JPEG)';
+                btn.classList.remove('red');
+            }
+        }
     </script>
 </body>
 </html>
