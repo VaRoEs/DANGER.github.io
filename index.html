@@ -127,33 +127,63 @@
 
         #callScreen {
             display: none; width: 100%; flex-grow: 1; position: relative;
-            background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
+            background: #1a1a2e; border-radius: 0 0 7px 7px; overflow: hidden;
             animation: fadeIn 0.5s ease-in-out;
         }
         :fullscreen #callScreen { border-radius: 0; }
         
-        .video-remote { width: 100%; height: 100%; object-fit: contain; background: #111; }
+        .video-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #1a1a2e;
+        }
+        
+        .video-remote { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            background: #111;
+        }
         
         .video-local {
-            position: absolute; bottom: 90px; right: 20px; 
-            width: 160px; height: 120px; 
-            object-fit: cover; border-radius: 8px; background: #222; 
-            border: 2px solid rgba(255,255,255,0.7);
-            box-shadow: 0 0 15px rgba(0,0,0,0.7);
-            transform: scaleX(-1); z-index: 5; display: none;
-            transition: opacity 0.3s ease;
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            object-fit: cover;
+            border-radius: 12px;
+            background: #222;
+            border: 2px solid rgba(255,255,255,0.8);
+            box-shadow: 0 0 25px rgba(0,0,0,0.8);
+            transform: scaleX(-1);
+            z-index: 5;
+            display: block;
+            transition: all 0.3s ease;
+        }
+
+        .video-local.hidden {
+            display: none;
+        }
+
+        .video-local.screen-sharing {
+            transform: none;
         }
 
         .call-controls {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 8px; z-index: 100; flex-wrap: wrap; justify-content: center;
-            background: rgba(255,255,255,0.3); padding: 8px; border-radius: 10px;
-            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.2); padding: 10px 15px; border-radius: 12px;
+            backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.3);
             width: max-content; max-width: 95%;
         }
 
         .ctrl-btn {
-            width: 45px; height: 45px; border-radius: 5px; font-size: 20px;
+            width: 48px; height: 48px; border-radius: 8px; font-size: 20px;
             background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
             border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
@@ -173,15 +203,47 @@
         }
 
         @media (max-width: 480px) {
-            .call-controls { gap: 5px; padding: 5px; }
+            .call-controls { gap: 5px; padding: 6px 10px; }
             .ctrl-btn { width: 40px; height: 40px; font-size: 16px; }
             .ctrl-btn.danger { width: 50px; }
-            .video-local { width: 100px; height: 130px; bottom: 80px; right: 10px; }
+            .video-local { width: 100px; height: 75px; bottom: 80px; right: 10px; }
             .menu-buttons-row { flex-direction: column; }
         }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        
+        .call-timer {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            text-shadow: 0 0 20px rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.4);
+            padding: 6px 18px;
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+            z-index: 10;
+            letter-spacing: 1px;
+        }
+        
+        .remote-name {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.8);
+            font-size: 14px;
+            background: rgba(0,0,0,0.5);
+            padding: 4px 16px;
+            border-radius: 12px;
+            backdrop-filter: blur(4px);
+            z-index: 5;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -229,8 +291,12 @@
         </div>
 
         <div id="callScreen">
-            <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
-            <video id="localVideo" class="video-local" autoplay muted playsinline></video>
+            <div class="video-container">
+                <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
+                <video id="localVideo" class="video-local" autoplay muted playsinline></video>
+                <div class="call-timer" id="callTimer">00:00</div>
+                <div class="remote-name" id="remoteName">Собеседник</div>
+            </div>
             
             <div class="call-controls">
                 <button class="ctrl-btn" id="toggleMicBtn" title="Микрофон">🎤</button>
@@ -263,12 +329,15 @@
         document.getElementById('myIdDisplay').textContent = myId;
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. ВЕЧНЫЕ ПОТОКИ ---
+        // --- 2. ПОТОКИ ---
         const localStream = new MediaStream();
         const remoteStream = new MediaStream();
         
-        document.getElementById('localVideo').srcObject = localStream;
-        document.getElementById('remoteVideo').srcObject = remoteStream;
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        
+        localVideo.srcObject = localStream;
+        remoteVideo.srcObject = remoteStream;
 
         let peerConnection = null;
         let inCall = false;
@@ -282,6 +351,8 @@
         let isPipVisible = true;
         let savedCameraTrack = null; 
         let currentFacingMode = 'user';
+        let callStartTime = null;
+        let callTimerInterval = null;
 
         const stunServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
 
@@ -302,7 +373,7 @@
             if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
         }
 
-        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И ОПТИМИЗАЦИЯ ---
+        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА ---
         async function getDevices() {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
@@ -340,28 +411,30 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            localStream.getTracks().forEach(t => t.stop());
-            localStream.getTracks().forEach(t => localStream.removeTrack(t));
+            localStream.getTracks().forEach(t => {
+                t.stop();
+                localStream.removeTrack(t);
+            });
 
-            // ОПТИМИЗАЦИЯ: Жесткие лимиты на разрешение и FPS, чтобы не вешать браузер
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
                 video: videoId 
-                    ? { deviceId: { exact: videoId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } } 
-                    : { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }
+                    ? { deviceId: { exact: videoId }, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } 
+                    : { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } }
             };
 
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 newStream.getTracks().forEach(t => {
-                    if (t.kind === 'video') {
-                        t.contentHint = 'motion'; // ОПТИМИЗАЦИЯ: Делаем видео с камеры максимально плавным
-                    }
                     localStream.addTrack(t);
                 });
                 
-                document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
+                // Показываем локальное видео только если не в режиме трансляции экрана
+                if (!isScreenSharing) {
+                    localVideo.style.display = isPipVisible ? 'block' : 'none';
+                    localVideo.style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+                }
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
@@ -395,7 +468,8 @@
             if (panel.style.display === 'block') {
                 panel.style.display = 'none';
             } else {
-                await startMedia();
+                panel.style.display = 'block';
+                await getDevices();
             }
         };
 
@@ -411,7 +485,7 @@
         document.getElementById('toggleMicBtn').onclick = () => {
             if (localStream.getAudioTracks().length > 0) {
                 isAudioEnabled = !isAudioEnabled;
-                localStream.getAudioTracks()[0].enabled = isAudioEnabled;
+                localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 document.getElementById('toggleMicBtn').classList.toggle('off', !isAudioEnabled);
             }
         };
@@ -419,7 +493,7 @@
         document.getElementById('toggleCamBtn').onclick = () => {
             if (localStream.getVideoTracks().length > 0) {
                 isVideoEnabled = !isVideoEnabled;
-                localStream.getVideoTracks()[0].enabled = isVideoEnabled;
+                localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 document.getElementById('toggleCamBtn').classList.toggle('off', !isVideoEnabled);
             }
         };
@@ -434,7 +508,7 @@
         document.getElementById('togglePipBtn').onclick = () => {
             isPipVisible = !isPipVisible;
             if (!isScreenSharing) {
-                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+                localVideo.style.display = isPipVisible ? 'block' : 'none';
             }
             document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
         };
@@ -455,10 +529,9 @@
         async function startScreenShareLogic() {
             if (isScreenSharing) return true;
             try {
-                // ОПТИМИЗАЦИЯ: Захватываем экран с нормальным FPS
-                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } } });
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 24 } } });
                 const screenTrack = screenStream.getVideoTracks()[0];
-                screenTrack.contentHint = 'detail'; // Подсказка для браузера - держать качество текста
+                screenTrack.contentHint = 'detail';
                 
                 savedCameraTrack = localStream.getVideoTracks()[0]; 
                 
@@ -469,9 +542,7 @@
                 
                 updateTransceivers();
                 
-                // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Полностью скрываем маленькое окошко на время трансляции
-                document.getElementById('localVideo').style.display = 'none'; 
-                document.getElementById('localVideo').style.transform = 'none'; 
+                localVideo.style.display = 'none';
                 
                 isScreenSharing = true;
                 document.getElementById('shareScreenBtn').classList.add('off'); 
@@ -505,13 +576,12 @@
                 localStream.addTrack(savedCameraTrack);
                 savedCameraTrack = null;
                 const videoId = document.getElementById('videoSource').value;
-                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+                localVideo.style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
             
             updateTransceivers();
             
-            // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Возвращаем окошко обратно (если оно не было выключено кнопкой)
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            localVideo.style.display = isPipVisible ? 'block' : 'none';
             
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
@@ -521,19 +591,27 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
-            peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-            peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-
-            updateTransceivers();
+            // Добавляем треки в peerConnection
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
 
             peerConnection.ontrack = event => {
-                if (!remoteStream.getTracks().includes(event.track)) {
-                    remoteStream.addTrack(event.track);
+                console.log('Получен трек:', event.track.kind);
+                if (event.track.kind === 'video') {
+                    // Если это видео, добавляем в remoteStream
+                    if (!remoteStream.getTracks().some(t => t.id === event.track.id)) {
+                        remoteStream.addTrack(event.track);
+                    }
+                } else if (event.track.kind === 'audio') {
+                    if (!remoteStream.getTracks().some(t => t.id === event.track.id)) {
+                        remoteStream.addTrack(event.track);
+                    }
                 }
                 
-                const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.paused) {
-                    remoteVid.play().catch(e => console.warn(e));
+                // Принудительно обновляем video
+                if (remoteVideo.paused) {
+                    remoteVideo.play().catch(e => console.warn('Ошибка воспроизведения:', e));
                 }
             };
 
@@ -544,23 +622,60 @@
             };
 
             peerConnection.onconnectionstatechange = () => {
-                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                console.log('Состояние соединения:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'disconnected' || 
+                    peerConnection.connectionState === 'failed' ||
+                    peerConnection.connectionState === 'closed') {
+                    endCall();
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('ICE состояние:', peerConnection.iceConnectionState);
+                if (peerConnection.iceConnectionState === 'disconnected' ||
+                    peerConnection.iceConnectionState === 'failed') {
                     endCall();
                 }
             };
         }
 
-        // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
+        // --- 6. ТАЙМЕР ЗВОНКА ---
+        function startCallTimer() {
+            callStartTime = Date.now();
+            callTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+                const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                const secs = String(elapsed % 60).padStart(2, '0');
+                document.getElementById('callTimer').textContent = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function stopCallTimer() {
+            if (callTimerInterval) {
+                clearInterval(callTimerInterval);
+                callTimerInterval = null;
+            }
+            document.getElementById('callTimer').textContent = '00:00';
+        }
+
+        // --- 7. ИСХОДЯЩИЙ ЗВОНОК ---
         async function initiateCall(withScreenShare) {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
+
+            // Сначала запускаем медиа если ещё не запущены
+            if (localStream.getTracks().length === 0) {
+                await startMedia();
+            }
 
             if (withScreenShare) {
                 const success = await startScreenShareLogic();
                 if (!success) return; 
             }
             
-            inCall = true; callRole = 'caller';
+            inCall = true; 
+            callRole = 'caller';
+            document.getElementById('remoteName').textContent = `ID: ${remoteId}`;
             updateStatus('Дозвон...', 'warning');
             
             document.getElementById('menuScreen').style.display = 'none';
@@ -570,6 +685,11 @@
             currentCallRef = db.ref(`calls/${remoteId}`);
             createPeerConnection();
 
+            // Добавляем все треки в соединение
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
@@ -578,13 +698,15 @@
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    // Запускаем таймер когда получили ответ
+                    startCallTimer();
                 }
             });
 
             currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
                 const candidate = snapshot.val();
                 if (candidate && peerConnection.remoteDescription) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
                 }
             });
             
@@ -596,7 +718,7 @@
         document.getElementById('connectBtn').onclick = () => initiateCall(false);
         document.getElementById('connectScreenBtn').onclick = () => initiateCall(true);
 
-        // --- 7. ВХОДЯЩИЕ ЗВОНКИ ---
+        // --- 8. ВХОДЯЩИЕ ЗВОНКИ ---
         db.ref(`calls/${myId}`).on('value', snapshot => {
             const data = snapshot.val();
             if (data && data.offer && !inCall) {
@@ -616,7 +738,15 @@
 
         document.getElementById('answerBtn').onclick = async () => {
             document.getElementById('incomingCall').classList.remove('active');
-            inCall = true; callRole = 'callee';
+            
+            // Запускаем медиа если ещё не запущены
+            if (localStream.getTracks().length === 0) {
+                await startMedia();
+            }
+            
+            inCall = true; 
+            callRole = 'callee';
+            document.getElementById('remoteName').textContent = `ID: ${incomingOfferData.callerId}`;
             
             document.getElementById('menuScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.add('in-call');
@@ -625,14 +755,24 @@
             currentCallRef = db.ref(`calls/${myId}`);
             createPeerConnection();
 
+            // Добавляем все треки
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
             await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
 
+            // Запускаем таймер когда ответ отправлен
+            startCallTimer();
+
             currentCallRef.child('candidates').child('caller').on('child_added', snapshot => {
                 const candidate = snapshot.val();
-                if (candidate) peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                if (candidate) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
+                }
             });
         };
 
@@ -642,9 +782,11 @@
             updateStatus('В сети', 'success');
         };
 
-        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
+        // --- 9. ЗАВЕРШЕНИЕ ЗВОНКА ---
         function endCall() {
             if (isScreenSharing) stopScreenShare();
+            
+            stopCallTimer();
             
             if (document.fullscreenElement) {
                 document.exitFullscreen().catch(e => console.log(e));
@@ -668,7 +810,11 @@
                 currentCallRef = null; 
             }
             
-            remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
+            // Очищаем remoteStream
+            remoteStream.getTracks().forEach(t => {
+                t.stop();
+                remoteStream.removeTrack(t);
+            });
             
             inCall = false; 
             callRole = null; 
@@ -682,6 +828,23 @@
 
         document.getElementById('leaveCallBtn').onclick = endCall;
 
+        // --- 10. АВТОЗАПУСК МЕДИА ПРИ ЗАГРУЗКЕ ---
+        // Запускаем медиа при загрузке страницы
+        window.addEventListener('load', () => {
+            startMedia();
+        });
+
+        // Обработка ошибок воспроизведения видео
+        remoteVideo.addEventListener('error', (e) => {
+            console.warn('Ошибка видео:', e);
+        });
+
+        // Принудительное обновление видео при появлении треков
+        remoteStream.onaddtrack = () => {
+            if (remoteVideo.paused) {
+                remoteVideo.play().catch(e => console.warn(e));
+            }
+        };
     </script>
 </body>
 </html>
