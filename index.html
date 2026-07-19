@@ -39,7 +39,6 @@
             height: 85vh;
         }
 
-        /* Если включен полноэкранный режим */
         :fullscreen .aero-window {
             width: 100%; max-width: 100%; height: 100vh; border-radius: 0; border: none;
         }
@@ -96,10 +95,7 @@
         }
         input[type="text"]:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
         
-        /* Кнопки меню в ряд */
-        .menu-buttons-row {
-            display: flex; gap: 10px; width: 100%; margin-bottom: 10px;
-        }
+        .menu-buttons-row { display: flex; gap: 10px; width: 100%; margin-bottom: 10px; }
 
         .glossy-btn {
             width: 100%; padding: 10px; border-radius: 3px; font-size: 14px; font-weight: 600;
@@ -158,7 +154,6 @@
             width: max-content; max-width: 95%;
         }
 
-        /* Квадратные кнопки управления как в плеере Win7 */
         .ctrl-btn {
             width: 45px; height: 45px; border-radius: 5px; font-size: 20px;
             background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
@@ -169,7 +164,6 @@
         .ctrl-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
         .ctrl-btn:active { box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
         
-        /* Красная кнопка, когда выключено */
         .ctrl-btn.off {
             background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
             border-color: #bf7f7f; opacity: 0.9;
@@ -180,7 +174,6 @@
             border-color: #900; color: white; width: 60px;
         }
 
-        /* Адаптация под мобильные устройства */
         @media (max-width: 480px) {
             .call-controls { gap: 5px; padding: 5px; }
             .ctrl-btn { width: 40px; height: 40px; font-size: 16px; }
@@ -203,7 +196,6 @@
             </div>
         </div>
         
-        <!-- МЕНЮ -->
         <div class="content-area" id="menuScreen">
             <h2>Ваш профиль</h2>
             <div class="id-box">
@@ -219,7 +211,6 @@
                 <button class="glossy-btn" id="initMediaBtn">⚙️ Устройства</button>
             </div>
             
-            <!-- ПАНЕЛЬ НАСТРОЕК (Скрыта по умолчанию) -->
             <div class="settings-panel" id="settingsPanel">
                 <label>Видеокамера:</label>
                 <select id="videoSource"></select>
@@ -237,7 +228,6 @@
             </div>
         </div>
 
-        <!-- ЭКРАН ЗВОНКА -->
         <div id="callScreen">
             <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
             <video id="localVideo" class="video-local" autoplay muted playsinline></video>
@@ -281,7 +271,6 @@
         let currentCallRef = null;
         let incomingOfferData = null;
         
-        // Состояния
         let isAudioEnabled = true;
         let isVideoEnabled = true;
         let isScreenSharing = false;
@@ -302,19 +291,28 @@
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoSelect = document.getElementById('videoSource');
                 const audioSelect = document.getElementById('audioSource');
+                
+                const currentVideoId = videoSelect.value;
+                const currentAudioId = audioSelect.value;
+                
                 videoSelect.innerHTML = ''; audioSelect.innerHTML = '';
                 
+                let vCount = 1, aCount = 1;
                 devices.forEach(device => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
                     if (device.kind === 'videoinput') {
-                        option.text = device.label || `Камера ${videoSelect.length + 1}`;
+                        option.text = device.label || `Камера ${vCount++}`;
                         videoSelect.appendChild(option);
                     } else if (device.kind === 'audioinput') {
-                        option.text = device.label || `Микрофон ${audioSelect.length + 1}`;
+                        option.text = device.label || `Микрофон ${aCount++}`;
                         audioSelect.appendChild(option);
                     }
                 });
+                
+                // Сохраняем выбранные ранее устройства, если они всё еще доступны
+                if (currentVideoId && [...videoSelect.options].some(o => o.value === currentVideoId)) videoSelect.value = currentVideoId;
+                if (currentAudioId && [...audioSelect.options].some(o => o.value === currentAudioId)) audioSelect.value = currentAudioId;
                 
                 const panel = document.getElementById('settingsPanel');
                 if (panel.style.display !== 'block') {
@@ -329,10 +327,14 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            let constraints = {
-                audio: audioId ? { deviceId: { exact: audioId } } : true,
-                video: videoId ? { deviceId: { exact: videoId } } : { facingMode: currentFacingMode }
-            };
+            let constraints = { audio: true, video: true };
+            
+            if (audioId) constraints.audio = { deviceId: { exact: audioId } };
+            if (videoId) {
+                constraints.video = { deviceId: { exact: videoId } };
+            } else {
+                constraints.video = { facingMode: currentFacingMode };
+            }
 
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -344,8 +346,10 @@
                 localStream = newStream;
                 document.getElementById('localVideo').srcObject = localStream;
                 
-                // Учитываем текущее состояние PiP
-                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+                // Не показываем PiP, если включена трансляция экрана или PiP скрыт вручную
+                if (!isScreenSharing) {
+                    document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+                }
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
@@ -359,7 +363,6 @@
                 }
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
-                updateStatus('Устройства успешно подключены', 'success');
                 
                 if (document.getElementById('videoSource').options.length === 0) {
                     await getDevices();
@@ -368,7 +371,6 @@
                 console.warn("Камера недоступна, пробуем только звук");
                 try {
                     localStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    updateStatus('Подключен только микрофон', 'warning');
                     await getDevices();
                 } catch (err) {
                     alert('Нет доступа к устройствам');
@@ -381,20 +383,26 @@
             if (panel.style.display === 'block') {
                 panel.style.display = 'none';
             } else {
-                await startMedia();
+                if (!localStream) {
+                    updateStatus('Запрашиваю доступ к устройствам...', 'warning');
+                    await startMedia(); 
+                    updateStatus('Устройства успешно подключены', 'success');
+                } else {
+                    await getDevices();
+                }
             }
         };
 
-        document.getElementById('applySettingsBtn').onclick = () => {
-            if (isScreenSharing) {
-                alert("Остановите трансляцию экрана для смены камеры");
-                return;
-            }
-            startMedia();
+        // Кнопка применить скрывает панель
+        document.getElementById('applySettingsBtn').onclick = async () => {
+            if (isScreenSharing) return alert("Остановите трансляцию экрана для смены камеры");
+            updateStatus('Применение настроек...', 'warning');
+            await startMedia();
+            document.getElementById('settingsPanel').style.display = 'none';
+            updateStatus('✅ Настройки успешно применены', 'success');
         };
 
         // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА (КНОПКИ С ПОДСВЕТКОЙ) ---
-        
         document.getElementById('toggleMicBtn').onclick = () => {
             if (localStream && localStream.getAudioTracks().length > 0) {
                 isAudioEnabled = !isAudioEnabled;
@@ -411,21 +419,30 @@
             }
         };
 
+        // Улучшенная смена камеры (перебирает список на ПК, меняет facingMode на телефоне)
         document.getElementById('flipCamBtn').onclick = async () => {
             if (isScreenSharing) return alert("Остановите показ экрана");
-            document.getElementById('videoSource').value = ''; 
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            
+            const videoSelect = document.getElementById('videoSource');
+            if (videoSelect.options.length > 1) {
+                // Переключаем на следующую камеру в списке (полезно для ПК)
+                let nextIndex = (videoSelect.selectedIndex + 1) % videoSelect.options.length;
+                videoSelect.selectedIndex = nextIndex;
+            } else {
+                // Запасной вариант для мобилок
+                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            }
             await startMedia();
         };
 
-        // Включение/Отключение PiP (Локальное видео)
         document.getElementById('togglePipBtn').onclick = () => {
             isPipVisible = !isPipVisible;
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            if (!isScreenSharing) {
+                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            }
             document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
         };
 
-        // Включение/Отключение Полноэкранного режима
         document.getElementById('fullscreenBtn').onclick = () => {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
@@ -440,7 +457,7 @@
             }
         };
 
-        // ТРАНСЛЯЦИЯ ЭКРАНА (Screen Share)
+        // ТРАНСЛЯЦИЯ ЭКРАНА (С фиксом визуального PiP для транслятора)
         document.getElementById('shareScreenBtn').onclick = async () => {
             if (isScreenSharing) {
                 stopScreenShare();
@@ -459,8 +476,8 @@
                         if (sender) sender.replaceTrack(screenTrack);
                     }
                     
-                    document.getElementById('localVideo').srcObject = localStream;
-                    document.getElementById('localVideo').style.transform = 'none'; 
+                    // Скрываем локальный PiP у того кто транслирует, чтобы не мешало
+                    document.getElementById('localVideo').style.display = 'none'; 
                     
                     isScreenSharing = true;
                     document.getElementById('shareScreenBtn').classList.add('off'); 
@@ -492,6 +509,9 @@
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
             
+            // Возвращаем PiP, если он не был скрыт вручную через кнопку
+            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
         }
@@ -513,7 +533,7 @@
             peerConnection.ontrack = event => {
                 const remoteVid = document.getElementById('remoteVideo');
                 if (remoteVid.srcObject !== event.streams[0]) {
-                    remoteVid.srcObject = event.streams[0];
+                    remoteVid.srcObject = event.streams[0]; // Поток 100% идет на большой экран
                 }
             };
 
@@ -617,7 +637,6 @@
         function endCall() {
             if (isScreenSharing) stopScreenShare();
             
-            // Выходим из фуллскрина если он был
             if (document.fullscreenElement) {
                 document.exitFullscreen().catch(e => console.log(e));
                 document.getElementById('fullscreenBtn').classList.remove('off');
