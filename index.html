@@ -39,6 +39,7 @@
             height: 85vh;
         }
 
+        /* Если включен полноэкранный режим */
         :fullscreen .aero-window {
             width: 100%; max-width: 100%; height: 100vh; border-radius: 0; border: none;
         }
@@ -107,7 +108,6 @@
         .glossy-btn.green { background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%); border-color: #7fbf7f; }
         .glossy-btn.red { background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%); border-color: #bf7f7f; }
 
-        /* --- НАСТРОЙКИ УСТРОЙСТВ --- */
         .settings-panel {
             width: 100%; background: #f9f9f9; border: 1px solid #d9d9d9;
             padding: 15px; border-radius: 3px; margin-bottom: 15px; display: none;
@@ -126,7 +126,6 @@
         .incoming-box.active { display: block; animation: popIn 0.3s ease-out; }
         .action-buttons { display: flex; gap: 5px; }
 
-        /* --- ЭКРАН ЗВОНКА И ПАНЕЛЬ УПРАВЛЕНИЯ --- */
         #callScreen {
             display: none; width: 100%; flex-grow: 1; position: relative;
             background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
@@ -291,28 +290,24 @@
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoSelect = document.getElementById('videoSource');
                 const audioSelect = document.getElementById('audioSource');
-                
-                const currentVideoId = videoSelect.value;
-                const currentAudioId = audioSelect.value;
+                const prevVideo = videoSelect.value;
+                const prevAudio = audioSelect.value;
                 
                 videoSelect.innerHTML = ''; audioSelect.innerHTML = '';
                 
-                let vCount = 1, aCount = 1;
                 devices.forEach(device => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
                     if (device.kind === 'videoinput') {
-                        option.text = device.label || `Камера ${vCount++}`;
+                        option.text = device.label || `Камера ${videoSelect.length + 1}`;
                         videoSelect.appendChild(option);
                     } else if (device.kind === 'audioinput') {
-                        option.text = device.label || `Микрофон ${aCount++}`;
+                        option.text = device.label || `Микрофон ${audioSelect.length + 1}`;
                         audioSelect.appendChild(option);
                     }
                 });
-                
-                // Сохраняем выбранные ранее устройства, если они всё еще доступны
-                if (currentVideoId && [...videoSelect.options].some(o => o.value === currentVideoId)) videoSelect.value = currentVideoId;
-                if (currentAudioId && [...audioSelect.options].some(o => o.value === currentAudioId)) audioSelect.value = currentAudioId;
+                if (prevVideo) videoSelect.value = prevVideo;
+                if (prevAudio) audioSelect.value = prevAudio;
                 
                 const panel = document.getElementById('settingsPanel');
                 if (panel.style.display !== 'block') {
@@ -327,51 +322,51 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            let constraints = { audio: true, video: true };
-            
-            if (audioId) constraints.audio = { deviceId: { exact: audioId } };
-            if (videoId) {
-                constraints.video = { deviceId: { exact: videoId } };
-            } else {
-                constraints.video = { facingMode: currentFacingMode };
+            // ВАЖНОЕ ИСПРАВЛЕНИЕ ДЛЯ МОБИЛОК: Сначала отключаем старые треки, чтобы освободить железо!
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
             }
 
+            let constraints = {
+                audio: audioId ? { deviceId: { exact: audioId } } : true,
+                video: videoId ? { deviceId: { exact: videoId } } : { facingMode: currentFacingMode }
+            };
+
             try {
-                const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                if (localStream) {
-                    localStream.getTracks().forEach(t => t.stop());
-                }
-                
-                localStream = newStream;
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 document.getElementById('localVideo').srcObject = localStream;
-                
-                // Не показываем PiP, если включена трансляция экрана или PiP скрыт вручную
-                if (!isScreenSharing) {
-                    document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-                }
+                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
+                // ВАЖНОЕ ИСПРАВЛЕНИЕ: Используем getTransceivers для надежной замены треков на лету
                 if (peerConnection) {
-                    const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    const videoSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
                     
-                    if (audioSender && localStream.getAudioTracks()[0]) audioSender.replaceTrack(localStream.getAudioTracks()[0]);
-                    if (videoSender && localStream.getVideoTracks()[0]) videoSender.replaceTrack(localStream.getVideoTracks()[0]);
+                    if (audioTransceiver && localStream.getAudioTracks()[0]) audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
+                    if (videoTransceiver && localStream.getVideoTracks()[0]) videoTransceiver.sender.replaceTrack(localStream.getVideoTracks()[0]);
                 }
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+                updateStatus('Устройства успешно подключены', 'success');
                 
                 if (document.getElementById('videoSource').options.length === 0) {
                     await getDevices();
                 }
             } catch (e) {
-                console.warn("Камера недоступна, пробуем только звук");
+                console.warn("Камера недоступна или занята, пробуем только звук", e);
                 try {
                     localStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    await getDevices();
+                    document.getElementById('localVideo').srcObject = localStream;
+                    
+                    if (peerConnection) {
+                        const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+                        if (audioTransceiver && localStream.getAudioTracks()[0]) audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
+                    }
+                    updateStatus('Подключен только микрофон', 'warning');
+                    if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 } catch (err) {
                     alert('Нет доступа к устройствам');
                 }
@@ -383,26 +378,19 @@
             if (panel.style.display === 'block') {
                 panel.style.display = 'none';
             } else {
-                if (!localStream) {
-                    updateStatus('Запрашиваю доступ к устройствам...', 'warning');
-                    await startMedia(); 
-                    updateStatus('Устройства успешно подключены', 'success');
-                } else {
-                    await getDevices();
-                }
+                await startMedia();
             }
         };
 
-        // Кнопка применить скрывает панель
-        document.getElementById('applySettingsBtn').onclick = async () => {
-            if (isScreenSharing) return alert("Остановите трансляцию экрана для смены камеры");
-            updateStatus('Применение настроек...', 'warning');
-            await startMedia();
-            document.getElementById('settingsPanel').style.display = 'none';
-            updateStatus('✅ Настройки успешно применены', 'success');
+        document.getElementById('applySettingsBtn').onclick = () => {
+            if (isScreenSharing) {
+                alert("Остановите трансляцию экрана для смены камеры");
+                return;
+            }
+            startMedia();
         };
 
-        // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА (КНОПКИ С ПОДСВЕТКОЙ) ---
+        // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА ---
         document.getElementById('toggleMicBtn').onclick = () => {
             if (localStream && localStream.getAudioTracks().length > 0) {
                 isAudioEnabled = !isAudioEnabled;
@@ -419,35 +407,22 @@
             }
         };
 
-        // Улучшенная смена камеры (перебирает список на ПК, меняет facingMode на телефоне)
         document.getElementById('flipCamBtn').onclick = async () => {
             if (isScreenSharing) return alert("Остановите показ экрана");
-            
-            const videoSelect = document.getElementById('videoSource');
-            if (videoSelect.options.length > 1) {
-                // Переключаем на следующую камеру в списке (полезно для ПК)
-                let nextIndex = (videoSelect.selectedIndex + 1) % videoSelect.options.length;
-                videoSelect.selectedIndex = nextIndex;
-            } else {
-                // Запасной вариант для мобилок
-                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            }
+            document.getElementById('videoSource').value = ''; 
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
             await startMedia();
         };
 
         document.getElementById('togglePipBtn').onclick = () => {
             isPipVisible = !isPipVisible;
-            if (!isScreenSharing) {
-                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-            }
+            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
             document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
         };
 
         document.getElementById('fullscreenBtn').onclick = () => {
             if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    console.log(`Ошибка перехода в полный экран: ${err.message}`);
-                });
+                document.documentElement.requestFullscreen().catch(err => console.log(err));
                 document.getElementById('fullscreenBtn').classList.add('off');
             } else {
                 if (document.exitFullscreen) {
@@ -457,7 +432,7 @@
             }
         };
 
-        // ТРАНСЛЯЦИЯ ЭКРАНА (С фиксом визуального PiP для транслятора)
+        // ТРАНСЛЯЦИЯ ЭКРАНА
         document.getElementById('shareScreenBtn').onclick = async () => {
             if (isScreenSharing) {
                 stopScreenShare();
@@ -466,24 +441,26 @@
                     const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                     const screenTrack = screenStream.getVideoTracks()[0];
                     
-                    savedCameraTrack = localStream.getVideoTracks()[0];
+                    savedCameraTrack = localStream ? localStream.getVideoTracks()[0] : null;
+                    
+                    if (!localStream) {
+                        localStream = new MediaStream();
+                        document.getElementById('localVideo').srcObject = localStream;
+                    }
                     
                     if (savedCameraTrack) localStream.removeTrack(savedCameraTrack);
                     localStream.addTrack(screenTrack);
                     
                     if (peerConnection) {
-                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                        if (sender) sender.replaceTrack(screenTrack);
+                        const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                        if (videoTransceiver) videoTransceiver.sender.replaceTrack(screenTrack);
                     }
                     
-                    // Скрываем локальный PiP у того кто транслирует, чтобы не мешало
-                    document.getElementById('localVideo').style.display = 'none'; 
-                    
+                    document.getElementById('localVideo').style.transform = 'none'; 
                     isScreenSharing = true;
                     document.getElementById('shareScreenBtn').classList.add('off'); 
                     
                     screenTrack.onended = () => stopScreenShare();
-
                 } catch (e) {
                     console.error("Трансляция экрана отменена", e);
                 }
@@ -493,24 +470,25 @@
         function stopScreenShare() {
             if (!isScreenSharing) return;
             const screenTrack = localStream.getVideoTracks()[0];
-            if (screenTrack) screenTrack.stop();
-            
-            if (savedCameraTrack) {
+            if (screenTrack) {
+                screenTrack.stop();
                 localStream.removeTrack(screenTrack);
-                localStream.addTrack(savedCameraTrack);
-                
-                if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(savedCameraTrack);
-                }
-                
-                document.getElementById('localVideo').srcObject = localStream;
-                const videoId = document.getElementById('videoSource').value;
-                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
             
-            // Возвращаем PiP, если он не был скрыт вручную через кнопку
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            if (savedCameraTrack) {
+                localStream.addTrack(savedCameraTrack);
+                if (peerConnection) {
+                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                    if (videoTransceiver) videoTransceiver.sender.replaceTrack(savedCameraTrack);
+                }
+                const videoId = document.getElementById('videoSource').value;
+                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+            } else {
+                if (peerConnection) {
+                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                    if (videoTransceiver) videoTransceiver.sender.replaceTrack(null);
+                }
+            }
             
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
@@ -520,20 +498,20 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
-            if (localStream) {
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                if (localStream.getVideoTracks().length === 0) {
-                    peerConnection.addTransceiver('video', { direction: 'recvonly' });
-                }
-            } else {
-                peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-                peerConnection.addTransceiver('video', { direction: 'recvonly' });
-            }
+            // ВАЖНОЕ ИСПРАВЛЕНИЕ: Форсируем sendrecv каналы сразу, чтобы можно было подхватить видео или экран позже
+            const audioTrack = localStream && localStream.getAudioTracks().length > 0 ? localStream.getAudioTracks()[0] : null;
+            const videoTrack = localStream && localStream.getVideoTracks().length > 0 ? localStream.getVideoTracks()[0] : null;
+
+            if (audioTrack) peerConnection.addTransceiver(audioTrack, { direction: 'sendrecv', streams: [localStream] });
+            else peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+
+            if (videoTrack) peerConnection.addTransceiver(videoTrack, { direction: 'sendrecv', streams: [localStream] });
+            else peerConnection.addTransceiver('video', { direction: 'sendrecv' });
 
             peerConnection.ontrack = event => {
                 const remoteVid = document.getElementById('remoteVideo');
                 if (remoteVid.srcObject !== event.streams[0]) {
-                    remoteVid.srcObject = event.streams[0]; // Поток 100% идет на большой экран
+                    remoteVid.srcObject = event.streams[0];
                 }
             };
 
@@ -567,20 +545,29 @@
 
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
-
             await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
+
+            // Очередь для устранения бага потери пакетов (ICE Candidate Race Condition)
+            let pendingCandidates = [];
 
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    // Добавляем кандидатов, которые могли прийти до установки RemoteDescription
+                    pendingCandidates.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
+                    pendingCandidates = [];
                 }
             });
 
             currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
                 const candidate = snapshot.val();
-                if (candidate && peerConnection.remoteDescription) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                if (candidate) {
+                    if (peerConnection.remoteDescription) {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } else {
+                        pendingCandidates.push(candidate);
+                    }
                 }
             });
             
@@ -618,7 +605,6 @@
             await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
-
             await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
 
             currentCallRef.child('candidates').child('caller').on('child_added', snapshot => {
