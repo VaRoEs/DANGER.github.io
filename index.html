@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Win7 Скайп</title>
+    <title>Win7 Скайп (Native WebRTC)</title>
     
-    <!-- Подключаем Firebase -->
+    <!-- Подключаем Firebase (используем его только для сигналлинга вместо Python) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    
-    <!-- Подключаем Metered SDK (WebRTC SFU) -->
-    <script src="https://cdn.metered.ca/sdk/frame/1.4.3/sdk-frame.min.js"></script>
 
     <style>
         /* --- СТИЛЬ WINDOWS 7 AERO GLASS --- */
@@ -37,9 +34,8 @@
             transition: max-width 0.5s ease-in-out, height 0.5s ease-in-out;
         }
 
-        /* Класс для плавного увеличения окна во время звонка */
         .aero-window.in-call {
-            max-width: 900px;
+            max-width: 1000px;
             height: 85vh;
         }
 
@@ -72,7 +68,6 @@
             border: 1px solid rgba(0,0,0,0.3);
             padding: 20px; display: flex; flex-direction: column; align-items: center;
             flex-grow: 1;
-            transition: opacity 0.3s ease;
         }
 
         h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
@@ -87,7 +82,6 @@
         .status { 
             padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 20px; 
             font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
-            transition: all 0.3s ease;
         }
         .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
         .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
@@ -105,7 +99,6 @@
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
         }
         .glossy-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
-        .glossy-btn:active { background: linear-gradient(to bottom, #a7d9f5 0%, #bee6fd 49%, #d6f0fd 50%, #f2f9fe 100%); box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
         
         .glossy-btn.green {
             background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%);
@@ -124,22 +117,27 @@
         .incoming-box p { color: #333; font-size: 15px; margin-bottom: 10px; }
         .action-buttons { display: flex; gap: 5px; }
 
-        /* --- ЭКРАН ЗВОНКА (теперь внутри окна Win7) --- */
+        /* --- ЭКРАН ЗВОНКА (Чистый WebRTC) --- */
         #callScreen {
             display: none; width: 100%; flex-grow: 1; position: relative;
             background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
             animation: fadeIn 0.5s ease-in-out;
         }
-        #metered-frame { width: 100%; height: 100%; border: none; }
         
-        /* Свой локальный превью */
-        #localPreview {
+        .video-remote {
+            width: 100%; height: 100%; object-fit: contain; background: #111;
+        }
+        
+        /* Зеркалируем локальное видео по умолчанию, так как старт с фронталки */
+        .video-local {
             position: absolute; bottom: 80px; right: 20px; 
             width: 160px; height: 120px; 
-            border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
-            background: #222; z-index: 60; object-fit: cover;
-            display: none;
+            object-fit: cover; border-radius: 8px; background: #222; 
+            border: 2px solid rgba(255,255,255,0.7);
             box-shadow: 0 0 15px rgba(0,0,0,0.7);
+            transform: scaleX(-1); 
+            z-index: 5;
+            display: none;
         }
 
         .call-controls {
@@ -166,18 +164,16 @@
         <!-- МЕНЮ -->
         <div class="content-area" id="menuScreen">
             <h2>Ваш профиль</h2>
-            
             <div class="id-box">
                 <p>Твой постоянный ID:</p>
                 <div class="my-id" id="myIdDisplay">0000</div>
             </div>
             
             <div class="status success" id="status">В сети. Ожидание вызовов...</div>
-            
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
             <button class="glossy-btn" id="connectBtn" style="margin-bottom: 10px;">📞 Позвонить</button>
-            <button class="glossy-btn" id="cameraToggleBtn" style="font-size: 13px; margin-bottom:10px;">📷 Включить камеру</button>
+            <button class="glossy-btn" id="initMediaBtn" style="margin-bottom:10px;">🎥 Подключить камеру/микрофон</button>
             
             <div class="incoming-box" id="incomingCall">
                 <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
@@ -188,32 +184,29 @@
             </div>
         </div>
 
-        <!-- ЭКРАН ЗВОНКА (Внутри окна) -->
+        <!-- ЭКРАН ЗВОНКА -->
         <div id="callScreen">
-            <div id="metered-frame"></div>
-            <video id="localPreview" autoplay muted playsinline></video>
+            <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
+            <video id="localVideo" class="video-local" autoplay muted playsinline></video>
             
             <div class="call-controls">
+                <button class="glossy-btn" id="flipCamBtn" style="width: 50px;" title="Повернуть">🔄</button>
                 <button class="glossy-btn red" id="leaveCallBtn" style="width: 150px;">Отключиться</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- 1. НАСТРОЙКИ FIREBASE ---
+        // --- 1. FIREBASE ИНИЦИАЛИЗАЦИЯ ---
         const firebaseConfig = {
             apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
             authDomain: "skype7q.firebaseapp.com",
             databaseURL: "https://skype7q-default-rtdb.firebaseio.com",
-            projectId: "skype7q",
-            storageBucket: "skype7q.firebasestorage.app",
-            messagingSenderId: "4846139446",
-            appId: "1:4846139446:web:f2b24c3da4d0887f3a8097"
+            projectId: "skype7q"
         };
         if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
         const db = firebase.database();
 
-        // --- 2. ИДЕНТИФИКАЦИЯ ---
         let myId = localStorage.getItem('my_skype_id');
         if (!myId) {
             myId = Math.floor(1000 + Math.random() * 9000).toString();
@@ -222,208 +215,218 @@
         document.getElementById('myIdDisplay').textContent = myId;
         db.ref(`calls/${myId}`).remove(); 
 
-        let inCall = false;
-        let activeRemoteId = null; 
+        // --- 2. WEBRTC ПЕРЕМЕННЫЕ ---
         let localStream = null;
-        let isCameraOn = false;
-        let meteredFrameInstance = null;
+        let peerConnection = null;
+        let inCall = false;
+        let callRole = null; 
+        let currentCallRef = null;
+        let currentFacingMode = 'user';
+        let incomingOfferData = null;
 
-        // --- 3. ИНТЕРФЕЙС ---
+        const stunServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+
         function updateStatus(msg, type = 'success') {
             const el = document.getElementById('status');
             el.textContent = msg; el.className = 'status ' + type;
         }
 
-        // --- 4. ВХОДЯЩИЕ ЗВОНКИ ---
-        db.ref(`calls/${myId}`).on('value', snapshot => {
-            const data = snapshot.val();
-            if (data && data.status === 'ringing') {
-                if (inCall) { db.ref(`calls/${myId}`).update({ status: 'rejected' }); return; }
-                activeRemoteId = data.callerId;
-                document.getElementById('callerIdDisplay').textContent = data.callerId;
-                document.getElementById('incomingCall').classList.add('active');
-                updateStatus('Входящий вызов...', 'warning');
-            } else {
-                document.getElementById('incomingCall').classList.remove('active');
-                if (!inCall) updateStatus('В сети. Ожидание вызовов...', 'success');
+        // --- 3. ПОДКЛЮЧЕНИЕ КАМЕРЫ ---
+        document.getElementById('initMediaBtn').onclick = async () => {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true },
+                    video: { facingMode: currentFacingMode }
+                });
+                document.getElementById('localVideo').srcObject = localStream;
+                document.getElementById('localVideo').style.display = 'block';
+                document.getElementById('initMediaBtn').textContent = '✅ Камера готова';
+                updateStatus('Камера и микрофон готовы', 'success');
+            } catch (e) {
+                console.warn("Камера недоступна, пробуем звук");
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    document.getElementById('initMediaBtn').textContent = '🎤 Только звук';
+                    updateStatus('Подключен только микрофон', 'warning');
+                } catch (err) {
+                    alert('Нет доступа к устройствам');
+                }
             }
-        });
+        };
 
-        // --- 5. ИСХОДЯЩИЙ ЗВОНОК ---
-        function handleCallClick() {
+        // --- 4. ПЕРЕВОРОТ КАМЕРЫ (С ФИКСАМИ) ---
+        document.getElementById('flipCamBtn').onclick = async () => {
+            if (!localStream) return;
+            const oldVideoTrack = localStream.getVideoTracks()[0];
+            if (oldVideoTrack) oldVideoTrack.stop();
+
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+
+            try {
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode }
+                });
+                const newVideoTrack = newStream.getVideoTracks()[0];
+
+                localStream.removeTrack(oldVideoTrack);
+                localStream.addTrack(newVideoTrack);
+                document.getElementById('localVideo').srcObject = localStream;
+
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(newVideoTrack);
+                }
+
+                // Визуально зеркалим только фронталку
+                document.getElementById('localVideo').style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
+            } catch (e) {
+                console.error("Ошибка поворота", e);
+            }
+        };
+
+        // --- 5. СОЗДАНИЕ PEER CONNECTION ---
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(stunServers);
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                
+                // Фикс: если камеры нет, говорим что готовы принимать видео
+                if (localStream.getVideoTracks().length === 0) {
+                    peerConnection.addTransceiver('video', { direction: 'recvonly' });
+                }
+            } else {
+                peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+                peerConnection.addTransceiver('video', { direction: 'recvonly' });
+            }
+
+            peerConnection.ontrack = event => {
+                const remoteVid = document.getElementById('remoteVideo');
+                if (remoteVid.srcObject !== event.streams[0]) {
+                    remoteVid.srcObject = event.streams[0];
+                }
+            };
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate && currentCallRef) {
+                    currentCallRef.child('candidates').child(callRole).push(event.candidate.toJSON());
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                    endCall();
+                }
+            };
+        }
+
+        // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
+        document.getElementById('connectBtn').onclick = async () => {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
             
             inCall = true;
-            activeRemoteId = remoteId;
+            callRole = 'caller';
             updateStatus('Дозвон...', 'warning');
             
-            const btn = document.getElementById('connectBtn');
-            btn.textContent = 'Отменить вызов';
-            
-            let callRef = db.ref(`calls/${remoteId}`);
-            callRef.set({ callerId: myId, status: 'ringing' });
-
-            btn.onclick = () => {
-                callRef.remove(); callRef.off(); inCall = false; activeRemoteId = null;
-                btn.textContent = '📞 Позвонить'; btn.onclick = handleCallClick;
-                updateStatus('В сети', 'success');
-                stopLocalCamera();
-            };
-
-            callRef.on('value', snap => {
-                const data = snap.val();
-                if (data && data.status === 'answered') {
-                    callRef.off(); callRef.remove(); startMeteredCall();
-                } else if (data && data.status === 'rejected') {
-                    callRef.off(); inCall = false; activeRemoteId = null;
-                    btn.textContent = '📞 Позвонить'; btn.onclick = handleCallClick;
-                    updateStatus('Отклонено/Занято', 'warning');
-                    setTimeout(() => { if (!inCall) updateStatus('В сети', 'success') }, 3000);
-                    stopLocalCamera();
-                }
-            });
-        }
-        document.getElementById('connectBtn').onclick = handleCallClick;
-
-        // --- 6. ПРИНЯТЬ / ОТКЛОНИТЬ ---
-        document.getElementById('answerBtn').onclick = () => {
-            inCall = true; document.getElementById('incomingCall').classList.remove('active');
-            db.ref(`calls/${myId}`).update({ status: 'answered' });
-            startMeteredCall();
-        };
-        document.getElementById('rejectBtn').onclick = () => {
-            document.getElementById('incomingCall').classList.remove('active');
-            db.ref(`calls/${myId}`).update({ status: 'rejected' });
-            setTimeout(() => db.ref(`calls/${myId}`).remove(), 1000);
-            updateStatus('В сети', 'success');
-            stopLocalCamera();
-        };
-
-        // --- 7. METERED SDK & ИНТЕГРАЦИЯ С WIN7 ---
-        function updateMeteredStream() {
-            document.getElementById('metered-frame').innerHTML = '';
-            let options = {
-                roomURL: "skype777.metered.live/78",
-                requireCamera: false,
-                requireMicrophone: false
-            };
-            
-            if (isCameraOn && localStream) {
-                options.stream = localStream;
-                if (localStream.getAudioTracks().length > 0) {
-                    options.requireMicrophone = true;
-                }
-            }
-            
-            meteredFrameInstance = new MeteredFrame(); 
-            meteredFrameInstance.init(options, document.getElementById("metered-frame"));
-
-            if (isCameraOn && localStream) {
-                document.getElementById('localPreview').srcObject = localStream;
-                document.getElementById('localPreview').style.display = 'block';
-            } else {
-                document.getElementById('localPreview').style.display = 'none';
-            }
-        }
-
-        function startMeteredCall() {
-            // Плавный переход внутри Win7 окошка
             document.getElementById('menuScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.add('in-call');
             document.getElementById('callScreen').style.display = 'flex';
-            
-            updateMeteredStream();
-        }
 
-        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (С УМНЫМ ФОЛЛБЕКОМ НА ЗАХВАТ ЭКРАНА) ---
-        async function startLocalCamera() {
-            try {
-                // 1. Пробуем получить веб-камеру
-                let constraints = { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            } catch (e) {
-                console.warn('Веб-камера недоступна. Эмулируем камеру через захват экрана...');
-                try {
-                    // 2. Если камеры нет - транслируем экран
-                    localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-                } catch(e2) {
-                    console.warn('Захват экрана отменен. Включаем синий экран (Canvas).');
-                    // 3. Заглушка Canvas, если пользователь отменил расшаривание
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 320; canvas.height = 240;
-                    const ctx = canvas.getContext('2d');
-                    let frame = 0;
-                    function drawFrame() {
-                        ctx.fillStyle = '#003399'; ctx.fillRect(0, 0, 320, 240);
-                        ctx.fillStyle = '#fff'; ctx.font = '20px Segoe UI'; ctx.fillText('Нет камеры', 105, 80);
-                        ctx.font = '16px Segoe UI'; ctx.fillText('ID: ' + myId, 130, 130);
-                        ctx.fillStyle = '#ffcc00'; ctx.fillRect(20 + frame % 60, 180, 30, 30);
-                        ctx.fillStyle = '#ff6b6b'; ctx.beginPath();
-                        ctx.arc(280, 200, 10 + Math.sin(frame/10)*5, 0, Math.PI*2); ctx.fill();
-                        frame++; requestAnimationFrame(drawFrame);
-                    }
-                    drawFrame();
-                    localStream = canvas.captureStream(30);
+            currentCallRef = db.ref(`calls/${remoteId}`);
+            createPeerConnection();
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            await currentCallRef.set({
+                callerId: myId,
+                offer: { type: offer.type, sdp: offer.sdp }
+            });
+
+            // Слушаем ответ
+            currentCallRef.child('answer').on('value', async snapshot => {
+                const answer = snapshot.val();
+                if (answer && !peerConnection.currentRemoteDescription) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
                 }
-            }
+            });
 
-            isCameraOn = true;
-            document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
-            document.getElementById('cameraToggleBtn').classList.add('red');
+            // Слушаем ICE кандидатов собеседника
+            currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
+                const candidate = snapshot.val();
+                if (candidate && peerConnection.remoteDescription) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+            });
             
-            if (inCall && meteredFrameInstance) {
-                updateMeteredStream();
-            }
-            if (!inCall) updateStatus('Поток захвачен (ожидание вызова)', 'success');
-        }
-
-        function stopLocalCamera() {
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-                localStream = null;
-            }
-            isCameraOn = false;
-            document.getElementById('cameraToggleBtn').textContent = '📷 Включить камеру';
-            document.getElementById('cameraToggleBtn').classList.remove('red');
-            document.getElementById('localPreview').style.display = 'none';
-            
-            if (inCall && meteredFrameInstance) {
-                updateMeteredStream();
-            }
-        }
-
-        document.getElementById('cameraToggleBtn').onclick = () => {
-            if (isCameraOn) stopLocalCamera();
-            else startLocalCamera();
+            // Если сбросили на той стороне
+            currentCallRef.on('value', snap => {
+                if (!snap.exists() && inCall) endCall();
+            });
         };
 
-        // --- 9. ПЛАВНОЕ ЗАВЕРШЕНИЕ ЗВОНКА ---
-        document.getElementById('leaveCallBtn').onclick = () => {
-            db.ref(`calls/${myId}`).remove();
-            
-            if (meteredFrameInstance) {
-                try { meteredFrameInstance.close(); } catch(e) {}
-                document.getElementById('metered-frame').innerHTML = '';
+        // --- 7. ВХОДЯЩИЕ ЗВОНКИ ---
+        db.ref(`calls/${myId}`).on('value', snapshot => {
+            const data = snapshot.val();
+            if (data && data.offer && !inCall) {
+                incomingOfferData = data;
+                document.getElementById('callerIdDisplay').textContent = data.callerId;
+                document.getElementById('incomingCall').classList.add('active');
+                updateStatus('Входящий вызов...', 'warning');
+            } else if (!data) {
+                document.getElementById('incomingCall').classList.remove('active');
+                if (inCall && callRole === 'callee') endCall();
+                if (!inCall) updateStatus('В сети. Ожидание вызовов...', 'success');
             }
-            
-            stopLocalCamera();
-            inCall = false;
-            activeRemoteId = null;
+        });
 
-            // Плавный возврат в меню
+        document.getElementById('answerBtn').onclick = async () => {
+            document.getElementById('incomingCall').classList.remove('active');
+            inCall = true;
+            callRole = 'callee';
+            
+            document.getElementById('menuScreen').style.display = 'none';
+            document.getElementById('mainWindow').classList.add('in-call');
+            document.getElementById('callScreen').style.display = 'flex';
+
+            currentCallRef = db.ref(`calls/${myId}`);
+            createPeerConnection();
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+
+            currentCallRef.child('candidates').child('caller').on('child_added', snapshot => {
+                const candidate = snapshot.val();
+                if (candidate) peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            });
+        };
+
+        document.getElementById('rejectBtn').onclick = () => {
+            db.ref(`calls/${myId}`).remove();
+            document.getElementById('incomingCall').classList.remove('active');
+            updateStatus('В сети', 'success');
+        };
+
+        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
+        function endCall() {
+            if (peerConnection) { peerConnection.close(); peerConnection = null; }
+            if (currentCallRef) { currentCallRef.off(); currentCallRef.remove(); currentCallRef = null; }
+            
+            document.getElementById('remoteVideo').srcObject = null;
+            inCall = false; callRole = null;
+
             document.getElementById('callScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.remove('in-call');
             document.getElementById('menuScreen').style.display = 'flex';
-            
-            const btn = document.getElementById('connectBtn');
-            btn.textContent = '📞 Позвонить'; btn.onclick = handleCallClick;
-            
             updateStatus('В сети. Ожидание вызовов...', 'success');
-        };
+        }
 
-        // --- 10. ЗАГРУЗКА ---
-        console.log('Skype 7 ready. ID:', myId);
+        document.getElementById('leaveCallBtn').onclick = endCall;
+
     </script>
 </body>
 </html>
