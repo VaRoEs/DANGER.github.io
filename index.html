@@ -25,7 +25,7 @@
         }
         
         .aero-window {
-            width: 95%; max-width: 450px;
+            width: 95%; max-width: 450px; min-height: 400px;
             background: rgba(255, 255, 255, 0.25);
             border: 1px solid rgba(255, 255, 255, 0.6);
             box-shadow: 0 0 15px rgba(0,0,0,0.5), inset 0 0 25px rgba(255,255,255,0.7);
@@ -34,6 +34,13 @@
             -webkit-backdrop-filter: blur(12px);
             position: relative;
             display: flex; flex-direction: column;
+            transition: max-width 0.5s ease-in-out, height 0.5s ease-in-out;
+        }
+
+        /* Класс для плавного увеличения окна во время звонка */
+        .aero-window.in-call {
+            max-width: 900px;
+            height: 85vh;
         }
 
         .title-bar {
@@ -42,6 +49,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.5);
             border-top-left-radius: 7px; border-top-right-radius: 7px;
             display: flex; justify-content: space-between; align-items: center;
+            flex-shrink: 0;
         }
         .title-bar .title {
             color: #000; font-size: 14px; font-weight: 600; text-shadow: 0 0 5px #fff, 0 0 10px #fff;
@@ -63,6 +71,8 @@
             margin: 0 5px 5px 5px; border-radius: 3px;
             border: 1px solid rgba(0,0,0,0.3);
             padding: 20px; display: flex; flex-direction: column; align-items: center;
+            flex-grow: 1;
+            transition: opacity 0.3s ease;
         }
 
         h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
@@ -77,6 +87,7 @@
         .status { 
             padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 20px; 
             font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
+            transition: all 0.3s ease;
         }
         .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
         .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
@@ -109,21 +120,22 @@
             display: none; background: #ffffcc; border: 1px solid #ffcc00;
             padding: 15px; border-radius: 3px; margin-top: 15px; width: 100%; text-align: center;
         }
-        .incoming-box.active { display: block; }
+        .incoming-box.active { display: block; animation: popIn 0.3s ease-out; }
         .incoming-box p { color: #333; font-size: 15px; margin-bottom: 10px; }
         .action-buttons { display: flex; gap: 5px; }
 
-        /* --- ЭКРАН ЗВОНКА --- */
+        /* --- ЭКРАН ЗВОНКА (теперь внутри окна Win7) --- */
         #callScreen {
-            display: none; width: 100%; height: 100%; position: absolute;
-            top: 0; left: 0; background: #000; border-radius: 8px; overflow: hidden;
+            display: none; width: 100%; flex-grow: 1; position: relative;
+            background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
+            animation: fadeIn 0.5s ease-in-out;
         }
         #metered-frame { width: 100%; height: 100%; border: none; }
         
-        /* Свой локальный превью (лицо) – поверх основного видео, маленькое окошко */
+        /* Свой локальный превью */
         #localPreview {
-            position: absolute; bottom: 80px; right: 10px; 
-            width: 120px; height: 160px; 
+            position: absolute; bottom: 80px; right: 20px; 
+            width: 160px; height: 120px; 
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
             background: #222; z-index: 60; object-fit: cover;
             display: none;
@@ -136,13 +148,9 @@
             background: rgba(255,255,255,0.3); padding: 10px; border-radius: 10px;
             backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
         }
-        .cam-toggle {
-            position: absolute; bottom: 80px; left: 10px; z-index: 80;
-            background: rgba(0,0,0,0.5); color: #fff; border: 1px solid #fff;
-            border-radius: 30px; padding: 8px 14px; font-size: 13px;
-            backdrop-filter: blur(5px); cursor: pointer;
-        }
-        .cam-toggle:hover { background: rgba(255,255,255,0.3); }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -155,6 +163,7 @@
             </div>
         </div>
         
+        <!-- МЕНЮ -->
         <div class="content-area" id="menuScreen">
             <h2>Ваш профиль</h2>
             
@@ -168,8 +177,7 @@
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
             <button class="glossy-btn" id="connectBtn" style="margin-bottom: 10px;">📞 Позвонить</button>
-            <!-- Кнопка для включения камеры (лицо) -->
-            <button class="glossy-btn" id="cameraToggleBtn" style="font-size: 13px; margin-bottom:10px;">📷 Включить камеру (лицо)</button>
+            <button class="glossy-btn" id="cameraToggleBtn" style="font-size: 13px; margin-bottom:10px;">📷 Включить камеру</button>
             
             <div class="incoming-box" id="incomingCall">
                 <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
@@ -179,18 +187,15 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- ЭКРАН ЗВОНКА -->
-    <div id="callScreen">
-        <div id="metered-frame"></div>
-        <!-- Локальное превью (твоё лицо) -->
-        <video id="localPreview" autoplay muted playsinline></video>
-        <!-- Кнопка переключения камеры -->
-        <button class="cam-toggle" id="switchCamBtn">🔄 Камера</button>
-        
-        <div class="call-controls">
-            <button class="glossy-btn red" id="leaveCallBtn">Завершить</button>
+        <!-- ЭКРАН ЗВОНКА (Внутри окна) -->
+        <div id="callScreen">
+            <div id="metered-frame"></div>
+            <video id="localPreview" autoplay muted playsinline></video>
+            
+            <div class="call-controls">
+                <button class="glossy-btn red" id="leaveCallBtn" style="width: 150px;">Отключиться</button>
+            </div>
         </div>
     </div>
 
@@ -219,7 +224,7 @@
 
         let inCall = false;
         let activeRemoteId = null; 
-        let localStream = null;     // поток с камеры (лицо)
+        let localStream = null;
         let isCameraOn = false;
         let meteredFrameInstance = null;
 
@@ -245,7 +250,7 @@
         });
 
         // --- 5. ИСХОДЯЩИЙ ЗВОНОК ---
-        document.getElementById('connectBtn').onclick = () => {
+        function handleCallClick() {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
             
@@ -261,7 +266,7 @@
 
             btn.onclick = () => {
                 callRef.remove(); callRef.off(); inCall = false; activeRemoteId = null;
-                btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
+                btn.textContent = '📞 Позвонить'; btn.onclick = handleCallClick;
                 updateStatus('В сети', 'success');
                 stopLocalCamera();
             };
@@ -272,13 +277,14 @@
                     callRef.off(); callRef.remove(); startMeteredCall();
                 } else if (data && data.status === 'rejected') {
                     callRef.off(); inCall = false; activeRemoteId = null;
-                    btn.textContent = '📞 Позвонить'; btn.onclick = arguments.callee;
+                    btn.textContent = '📞 Позвонить'; btn.onclick = handleCallClick;
                     updateStatus('Отклонено/Занято', 'warning');
-                    setTimeout(() => updateStatus('В сети', 'success'), 3000);
+                    setTimeout(() => { if (!inCall) updateStatus('В сети', 'success') }, 3000);
                     stopLocalCamera();
                 }
             });
-        };
+        }
+        document.getElementById('connectBtn').onclick = handleCallClick;
 
         // --- 6. ПРИНЯТЬ / ОТКЛОНИТЬ ---
         document.getElementById('answerBtn').onclick = () => {
@@ -294,18 +300,15 @@
             stopLocalCamera();
         };
 
-        // --- 7. METERED SDK (WebRTC, 60 FPS) + локальная камера ---
-        function startMeteredCall() {
-            document.getElementById('mainWindow').style.display = 'none';
-            document.getElementById('callScreen').style.display = 'block';
-            
+        // --- 7. METERED SDK & ИНТЕГРАЦИЯ С WIN7 ---
+        function updateMeteredStream() {
+            document.getElementById('metered-frame').innerHTML = '';
             let options = {
                 roomURL: "skype777.metered.live/78",
                 requireCamera: false,
                 requireMicrophone: false
             };
             
-            // Если камера включена — передаём свой стрим
             if (isCameraOn && localStream) {
                 options.stream = localStream;
                 if (localStream.getAudioTracks().length > 0) {
@@ -316,7 +319,6 @@
             meteredFrameInstance = new MeteredFrame(); 
             meteredFrameInstance.init(options, document.getElementById("metered-frame"));
 
-            // Показываем локальное превью если камера включена
             if (isCameraOn && localStream) {
                 document.getElementById('localPreview').srcObject = localStream;
                 document.getElementById('localPreview').style.display = 'block';
@@ -325,80 +327,55 @@
             }
         }
 
-        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (виртуальный поток, если нет камеры) ---
+        function startMeteredCall() {
+            // Плавный переход внутри Win7 окошка
+            document.getElementById('menuScreen').style.display = 'none';
+            document.getElementById('mainWindow').classList.add('in-call');
+            document.getElementById('callScreen').style.display = 'flex';
+            
+            updateMeteredStream();
+        }
+
+        // --- 8. УПРАВЛЕНИЕ КАМЕРОЙ (С УМНЫМ ФОЛЛБЕКОМ НА ЗАХВАТ ЭКРАНА) ---
         async function startLocalCamera() {
             try {
-                // Пытаемся получить реальную камеру
-                let constraints = { video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }, audio: false };
+                // 1. Пробуем получить веб-камеру
+                let constraints = { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                isCameraOn = true;
-                document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
-                document.getElementById('cameraToggleBtn').classList.add('red');
-                
-                if (inCall && meteredFrameInstance) {
-                    document.getElementById('metered-frame').innerHTML = '';
-                    let options = {
-                        roomURL: "skype777.metered.live/78",
-                        requireCamera: false,
-                        requireMicrophone: false,
-                        stream: localStream
-                    };
-                    meteredFrameInstance = new MeteredFrame();
-                    meteredFrameInstance.init(options, document.getElementById("metered-frame"));
-                    document.getElementById('localPreview').srcObject = localStream;
-                    document.getElementById('localPreview').style.display = 'block';
-                }
-                
-                if (!inCall) {
-                    updateStatus('Камера включена (ожидание вызова)', 'success');
-                }
             } catch (e) {
-                console.warn('Реальная камера недоступна, создаём ВИРТУАЛЬНУЮ (будет видна на устройстве без камеры)');
-                // СОЗДАЁМ ВИРТУАЛЬНЫЙ ПОТОК (canvas) с динамическим содержимым
-                const canvas = document.createElement('canvas');
-                canvas.width = 320; canvas.height = 240;
-                const ctx = canvas.getContext('2d');
-                let frame = 0;
-                function drawFrame() {
-                    ctx.fillStyle = '#003399';
-                    ctx.fillRect(0, 0, 320, 240);
-                    ctx.fillStyle = '#fff';
-                    ctx.font = '20px Segoe UI';
-                    ctx.fillText('📷 Виртуальная камера', 50, 80);
-                    ctx.font = '16px Segoe UI';
-                    ctx.fillText('ID: ' + myId, 110, 130);
-                    // Анимация
-                    ctx.fillStyle = '#ffcc00';
-                    ctx.fillRect(20 + frame % 60, 180, 30, 30);
-                    ctx.fillStyle = '#ff6b6b';
-                    ctx.beginPath();
-                    ctx.arc(280, 200, 10 + Math.sin(frame/10)*5, 0, Math.PI*2);
-                    ctx.fill();
-                    frame++;
-                    requestAnimationFrame(drawFrame);
-                }
-                drawFrame();
-                // Создаём поток из canvas (30 FPS)
-                const stream = canvas.captureStream(30);
-                localStream = stream;
-                isCameraOn = true;
-                document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
-                document.getElementById('cameraToggleBtn').classList.add('red');
-                
-                if (inCall && meteredFrameInstance) {
-                    document.getElementById('metered-frame').innerHTML = '';
-                    let options = {
-                        roomURL: "skype777.metered.live/78",
-                        requireCamera: false,
-                        requireMicrophone: false,
-                        stream: localStream
-                    };
-                    meteredFrameInstance = new MeteredFrame();
-                    meteredFrameInstance.init(options, document.getElementById("metered-frame"));
-                    document.getElementById('localPreview').srcObject = localStream;
-                    document.getElementById('localPreview').style.display = 'block';
+                console.warn('Веб-камера недоступна. Эмулируем камеру через захват экрана...');
+                try {
+                    // 2. Если камеры нет - транслируем экран
+                    localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+                } catch(e2) {
+                    console.warn('Захват экрана отменен. Включаем синий экран (Canvas).');
+                    // 3. Заглушка Canvas, если пользователь отменил расшаривание
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 320; canvas.height = 240;
+                    const ctx = canvas.getContext('2d');
+                    let frame = 0;
+                    function drawFrame() {
+                        ctx.fillStyle = '#003399'; ctx.fillRect(0, 0, 320, 240);
+                        ctx.fillStyle = '#fff'; ctx.font = '20px Segoe UI'; ctx.fillText('Нет камеры', 105, 80);
+                        ctx.font = '16px Segoe UI'; ctx.fillText('ID: ' + myId, 130, 130);
+                        ctx.fillStyle = '#ffcc00'; ctx.fillRect(20 + frame % 60, 180, 30, 30);
+                        ctx.fillStyle = '#ff6b6b'; ctx.beginPath();
+                        ctx.arc(280, 200, 10 + Math.sin(frame/10)*5, 0, Math.PI*2); ctx.fill();
+                        frame++; requestAnimationFrame(drawFrame);
+                    }
+                    drawFrame();
+                    localStream = canvas.captureStream(30);
                 }
             }
+
+            isCameraOn = true;
+            document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
+            document.getElementById('cameraToggleBtn').classList.add('red');
+            
+            if (inCall && meteredFrameInstance) {
+                updateMeteredStream();
+            }
+            if (!inCall) updateStatus('Поток захвачен (ожидание вызова)', 'success');
         }
 
         function stopLocalCamera() {
@@ -407,81 +384,46 @@
                 localStream = null;
             }
             isCameraOn = false;
-            document.getElementById('cameraToggleBtn').textContent = '📷 Включить камеру (лицо)';
+            document.getElementById('cameraToggleBtn').textContent = '📷 Включить камеру';
             document.getElementById('cameraToggleBtn').classList.remove('red');
             document.getElementById('localPreview').style.display = 'none';
             
             if (inCall && meteredFrameInstance) {
-                document.getElementById('metered-frame').innerHTML = '';
-                let options = {
-                    roomURL: "skype777.metered.live/78",
-                    requireCamera: false,
-                    requireMicrophone: false
-                };
-                meteredFrameInstance = new MeteredFrame();
-                meteredFrameInstance.init(options, document.getElementById("metered-frame"));
+                updateMeteredStream();
             }
         }
 
-        // Кнопка включения/выключения камеры
         document.getElementById('cameraToggleBtn').onclick = () => {
-            if (isCameraOn) {
-                stopLocalCamera();
-            } else {
-                startLocalCamera();
-            }
+            if (isCameraOn) stopLocalCamera();
+            else startLocalCamera();
         };
 
-        // Переключение камеры
-        document.getElementById('switchCamBtn').onclick = async () => {
-            if (!isCameraOn || !localStream) return alert('Сначала включите камеру');
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (!videoTrack) return;
-            // Если трек от canvas — не переключаем
-            if (videoTrack.label && videoTrack.label.includes('canvas')) {
-                alert('Это виртуальная камера, переключение недоступно');
-                return;
-            }
-            const settings = videoTrack.getSettings();
-            let newFacing = settings.facingMode === 'user' ? 'environment' : 'user';
-            stopLocalCamera();
-            try {
-                const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacing }, audio: false });
-                localStream = newStream;
-                isCameraOn = true;
-                document.getElementById('cameraToggleBtn').textContent = '📷 Выключить камеру';
-                document.getElementById('cameraToggleBtn').classList.add('red');
-                if (inCall && meteredFrameInstance) {
-                    document.getElementById('metered-frame').innerHTML = '';
-                    let options = {
-                        roomURL: "skype777.metered.live/78",
-                        requireCamera: false,
-                        requireMicrophone: false,
-                        stream: localStream
-                    };
-                    meteredFrameInstance = new MeteredFrame();
-                    meteredFrameInstance.init(options, document.getElementById("metered-frame"));
-                    document.getElementById('localPreview').srcObject = localStream;
-                    document.getElementById('localPreview').style.display = 'block';
-                }
-            } catch(e) {
-                alert('Не удалось переключить камеру');
-            }
-        };
-
-        // --- 9. ЗАВЕРШЕНИЕ ЗВОНКА ---
+        // --- 9. ПЛАВНОЕ ЗАВЕРШЕНИЕ ЗВОНКА ---
         document.getElementById('leaveCallBtn').onclick = () => {
             db.ref(`calls/${myId}`).remove();
-            if(activeRemoteId) db.ref(`screenshares/${activeRemoteId}`).off();
-            stopLocalCamera();
+            
             if (meteredFrameInstance) {
                 try { meteredFrameInstance.close(); } catch(e) {}
+                document.getElementById('metered-frame').innerHTML = '';
             }
-            window.location.reload(); 
+            
+            stopLocalCamera();
+            inCall = false;
+            activeRemoteId = null;
+
+            // Плавный возврат в меню
+            document.getElementById('callScreen').style.display = 'none';
+            document.getElementById('mainWindow').classList.remove('in-call');
+            document.getElementById('menuScreen').style.display = 'flex';
+            
+            const btn = document.getElementById('connectBtn');
+            btn.textContent = '📞 Позвонить'; btn.onclick = handleCallClick;
+            
+            updateStatus('В сети. Ожидание вызовов...', 'success');
         };
 
         // --- 10. ЗАГРУЗКА ---
-        console.log('Skype ready. ID:', myId);
+        console.log('Skype 7 ready. ID:', myId);
     </script>
 </body>
 </html>
