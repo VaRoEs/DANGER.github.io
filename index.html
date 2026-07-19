@@ -263,7 +263,7 @@
         document.getElementById('myIdDisplay').textContent = myId;
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. ВЕЧНЫЕ ПОТОКИ ---
+        // --- 2. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И ПОТОКИ ---
         const localStream = new MediaStream();
         const remoteStream = new MediaStream();
         
@@ -282,6 +282,10 @@
         let isPipVisible = true;
         let savedCameraTrack = null; 
         let currentFacingMode = 'user';
+        
+        // Очередь для правильной обработки кандидатов
+        let remoteCandidatesQueue = []; 
+        let hasAnswered = false;
 
         const stunServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
 
@@ -302,7 +306,7 @@
             if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
         }
 
-        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И ОПТИМИЗАЦИЯ ---
+        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА ---
         async function getDevices() {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
@@ -343,7 +347,6 @@
             localStream.getTracks().forEach(t => t.stop());
             localStream.getTracks().forEach(t => localStream.removeTrack(t));
 
-            // ОПТИМИЗАЦИЯ: Жесткие лимиты на разрешение и FPS, чтобы не вешать браузер
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
                 video: videoId 
@@ -355,9 +358,7 @@
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 newStream.getTracks().forEach(t => {
-                    if (t.kind === 'video') {
-                        t.contentHint = 'motion'; // ОПТИМИЗАЦИЯ: Делаем видео с камеры максимально плавным
-                    }
+                    if (t.kind === 'video') t.contentHint = 'motion';
                     localStream.addTrack(t);
                 });
                 
@@ -378,14 +379,12 @@
                 console.warn("Камера недоступна или занята, пробуем только звук", e);
                 try {
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    
                     audioStream.getTracks().forEach(t => localStream.addTrack(t));
                     updateTransceivers();
-                    
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 } catch (err) {
-                    alert('Нет доступа к устройствам');
+                    console.log('Нет доступа к устройствам');
                 }
             }
         }
@@ -451,25 +450,19 @@
             }
         };
 
-        // Логика захвата экрана
         async function startScreenShareLogic() {
             if (isScreenSharing) return true;
             try {
-                // ОПТИМИЗАЦИЯ: Захватываем экран с нормальным FPS
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } } });
                 const screenTrack = screenStream.getVideoTracks()[0];
-                screenTrack.contentHint = 'detail'; // Подсказка для браузера - держать качество текста
+                screenTrack.contentHint = 'detail';
                 
                 savedCameraTrack = localStream.getVideoTracks()[0]; 
-                
-                if (savedCameraTrack) {
-                    localStream.removeTrack(savedCameraTrack); 
-                }
+                if (savedCameraTrack) localStream.removeTrack(savedCameraTrack); 
                 localStream.addTrack(screenTrack); 
                 
                 updateTransceivers();
                 
-                // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Полностью скрываем маленькое окошко на время трансляции
                 document.getElementById('localVideo').style.display = 'none'; 
                 document.getElementById('localVideo').style.transform = 'none'; 
                 
@@ -494,30 +487,40 @@
 
         function stopScreenShare() {
             if (!isScreenSharing) return;
-            
             const currentVideoTrack = localStream.getVideoTracks()[0];
             if (currentVideoTrack) {
                 currentVideoTrack.stop();
                 localStream.removeTrack(currentVideoTrack);
             }
-            
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
                 savedCameraTrack = null;
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
-            
             updateTransceivers();
-            
-            // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Возвращаем окошко обратно (если оно не было выключено кнопкой)
             document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-            
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
         }
 
-        // --- 5. СОЗДАНИЕ PEER CONNECTION ---
+        // --- 5. СОЗДАНИЕ PEER CONNECTION И ОЧЕРЕДИ КАНДИДАТОВ ---
+        function addOrQueueCandidate(candidate) {
+            if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
+            } else {
+                remoteCandidatesQueue.push(candidate);
+            }
+        }
+
+        function processCandidateQueue() {
+            if (!peerConnection || !peerConnection.remoteDescription) return;
+            while (remoteCandidatesQueue.length > 0) {
+                const candidate = remoteCandidatesQueue.shift();
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
+            }
+        }
+
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
@@ -530,11 +533,8 @@
                 if (!remoteStream.getTracks().includes(event.track)) {
                     remoteStream.addTrack(event.track);
                 }
-                
                 const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.paused) {
-                    remoteVid.play().catch(e => console.warn(e));
-                }
+                if (remoteVid.paused) remoteVid.play().catch(e => console.warn(e));
             };
 
             peerConnection.onicecandidate = event => {
@@ -544,9 +544,11 @@
             };
 
             peerConnection.onconnectionstatechange = () => {
-                if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-                    endCall();
-                }
+                // ИСПРАВЛЕНИЕ 3: Перестаем реагировать на "disconnected", т.к. это часто временно и обрывает звонок на хорошей связи
+                if (peerConnection && peerConnection.connectionState === 'failed') endCall();
+            };
+            peerConnection.oniceconnectionstatechange = () => {
+                if (peerConnection && peerConnection.iceConnectionState === 'failed') endCall();
             };
         }
 
@@ -558,9 +560,14 @@
             if (withScreenShare) {
                 const success = await startScreenShareLogic();
                 if (!success) return; 
+            } else if (localStream.getTracks().length === 0) {
+                // ИСПРАВЛЕНИЕ 4: Автоматически запрашиваем камеру/микрофон, если юзер не нажал шестеренку
+                await startMedia();
             }
             
             inCall = true; callRole = 'caller';
+            hasAnswered = false;
+            remoteCandidatesQueue = [];
             updateStatus('Дозвон...', 'warning');
             
             document.getElementById('menuScreen').style.display = 'none';
@@ -568,32 +575,33 @@
             document.getElementById('callScreen').style.display = 'flex';
 
             currentCallRef = db.ref(`calls/${remoteId}`);
+            
+            // ИСПРАВЛЕНИЕ 1: Очищаем мусор от прошлых звонков ПЕРЕД началом нового, 
+            // чтобы старый answer не вызывал мгновенный краш.
+            await currentCallRef.remove(); 
+
             createPeerConnection();
 
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            
-            // ИСПРАВЛЕНИЕ ГОНКИ 1: Используем update вместо set.
-            // set() полностью перезаписывал узел, удаляя ICE-кандидаты, 
-            // которые успели сгенерироваться и отправиться в базу во время setLocalDescription.
-            await currentCallRef.update({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
+            // Безопасно слушаем кандидатов сразу, они отправятся в очередь
+            currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
+                const candidate = snapshot.val();
+                if (candidate) addOrQueueCandidate(candidate);
+            });
 
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
-                if (answer && !peerConnection.currentRemoteDescription) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                    
-                    // ИСПРАВЛЕНИЕ ГОНКИ 2: Начинаем слушать кандидаты собеседника ТОЛЬКО после 
-                    // успешной установки remoteDescription. Иначе быстрые кандидаты отдавались в null 
-                    // и пропадали (раньше условие if (candidate && peerConnection.remoteDescription) их просто рубило).
-                    currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
-                        const candidate = snapshot.val();
-                        if (candidate) {
-                            peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
-                        }
-                    });
+                if (answer && !hasAnswered && peerConnection) {
+                    hasAnswered = true;
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        processCandidateQueue(); // Применяем накопленные в очереди ICE-кандидаты
+                    } catch (e) { console.error("Ошибка установки ответа", e); }
                 }
             });
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            await currentCallRef.update({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
             
             currentCallRef.on('value', snap => {
                 if (!snap.exists() && inCall) endCall();
@@ -622,8 +630,14 @@
         });
 
         document.getElementById('answerBtn').onclick = async () => {
+            if (localStream.getTracks().length === 0) {
+                await startMedia(); // Страховка: запрашиваем устройства, если пусто
+            }
+
             document.getElementById('incomingCall').classList.remove('active');
             inCall = true; callRole = 'callee';
+            hasAnswered = false;
+            remoteCandidatesQueue = [];
             
             document.getElementById('menuScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.add('in-call');
@@ -632,17 +646,23 @@
             currentCallRef = db.ref(`calls/${myId}`);
             createPeerConnection();
 
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
-
+            // ИСПРАВЛЕНИЕ 2: Подписываемся сразу и складываем "ранние" кандидаты в очередь
             currentCallRef.child('candidates').child('caller').on('child_added', snapshot => {
                 const candidate = snapshot.val();
-                if (candidate) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
-                }
+                if (candidate) addOrQueueCandidate(candidate);
             });
+
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
+                processCandidateQueue(); // Опустошаем очередь после применения remoteDescription
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+            } catch(e) {
+                console.error("Ошибка при ответе:", e);
+                endCall();
+            }
         };
 
         document.getElementById('rejectBtn').onclick = () => {
@@ -664,6 +684,7 @@
                 peerConnection.onicecandidate = null;
                 peerConnection.ontrack = null;
                 peerConnection.onconnectionstatechange = null;
+                peerConnection.oniceconnectionstatechange = null;
                 peerConnection.close(); 
                 peerConnection = null; 
             }
@@ -682,6 +703,7 @@
             inCall = false; 
             callRole = null; 
             incomingOfferData = null;
+            remoteCandidatesQueue = []; // Очистка очереди
 
             document.getElementById('callScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.remove('in-call');
