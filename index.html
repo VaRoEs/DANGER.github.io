@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Win7 Скайп (Native WebRTC)</title>
+    <title>Win7 Скайп (Full WebRTC)</title>
     
-    <!-- Подключаем Firebase (используем его только для сигналлинга вместо Python) -->
+    <!-- Подключаем Firebase -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -58,39 +58,36 @@
             width: 26px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2);
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); cursor: pointer;
         }
-        .win-btn.close {
-            background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%);
-        }
+        .win-btn.close { background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%); }
 
         .content-area {
-            background: #fff;
-            margin: 0 5px 5px 5px; border-radius: 3px;
-            border: 1px solid rgba(0,0,0,0.3);
-            padding: 20px; display: flex; flex-direction: column; align-items: center;
-            flex-grow: 1;
+            background: #fff; margin: 0 5px 5px 5px; border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.3); padding: 20px; 
+            display: flex; flex-direction: column; align-items: center;
+            flex-grow: 1; overflow-y: auto;
         }
 
         h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
         
         .id-box { 
-            background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 20px; 
+            background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 15px; 
             width: 100%; border: 1px solid #cdd8e4; text-align: center;
         }
         .id-box p { color: #555; font-size: 13px; margin-bottom: 5px; }
         .my-id { font-size: 36px; color: #003399; letter-spacing: 3px; font-family: 'Consolas', monospace; }
         
         .status { 
-            padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 20px; 
+            padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 15px; 
             font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
         }
         .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
         .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
         
-        input {
+        input[type="text"] {
             width: 100%; padding: 10px; border: 1px solid #abadb3; border-radius: 3px; font-size: 18px;
             text-align: center; margin-bottom: 15px; outline: none; background: #fff;
         }
-        input:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
+        input[type="text"]:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
         
         .glossy-btn {
             width: 100%; padding: 10px; border-radius: 3px; font-size: 15px;
@@ -99,14 +96,19 @@
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
         }
         .glossy-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
-        
-        .glossy-btn.green {
-            background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%);
-            border-color: #7fbf7f;
+        .glossy-btn.green { background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%); border-color: #7fbf7f; }
+        .glossy-btn.red { background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%); border-color: #bf7f7f; }
+
+        /* --- НАСТРОЙКИ УСТРОЙСТВ --- */
+        .settings-panel {
+            width: 100%; background: #f9f9f9; border: 1px solid #d9d9d9;
+            padding: 10px; border-radius: 3px; margin-bottom: 15px; display: none;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
         }
-        .glossy-btn.red {
-            background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
-            border-color: #bf7f7f;
+        .settings-panel label { display: block; font-size: 12px; color: #555; margin-bottom: 3px; font-weight: 600; }
+        .settings-panel select { 
+            width: 100%; padding: 5px; margin-bottom: 10px; border: 1px solid #abadb3; 
+            border-radius: 3px; outline: none; font-family: 'Segoe UI'; font-size: 12px;
         }
 
         .incoming-box {
@@ -114,37 +116,50 @@
             padding: 15px; border-radius: 3px; margin-top: 15px; width: 100%; text-align: center;
         }
         .incoming-box.active { display: block; animation: popIn 0.3s ease-out; }
-        .incoming-box p { color: #333; font-size: 15px; margin-bottom: 10px; }
         .action-buttons { display: flex; gap: 5px; }
 
-        /* --- ЭКРАН ЗВОНКА (Чистый WebRTC) --- */
+        /* --- ЭКРАН ЗВОНКА И ПАНЕЛЬ УПРАВЛЕНИЯ --- */
         #callScreen {
             display: none; width: 100%; flex-grow: 1; position: relative;
             background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
             animation: fadeIn 0.5s ease-in-out;
         }
         
-        .video-remote {
-            width: 100%; height: 100%; object-fit: contain; background: #111;
-        }
+        .video-remote { width: 100%; height: 100%; object-fit: contain; background: #111; }
         
-        /* Зеркалируем локальное видео по умолчанию, так как старт с фронталки */
         .video-local {
             position: absolute; bottom: 80px; right: 20px; 
             width: 160px; height: 120px; 
             object-fit: cover; border-radius: 8px; background: #222; 
             border: 2px solid rgba(255,255,255,0.7);
             box-shadow: 0 0 15px rgba(0,0,0,0.7);
-            transform: scaleX(-1); 
-            z-index: 5;
-            display: none;
+            transform: scaleX(-1); z-index: 5; display: none;
         }
 
         .call-controls {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 10px; z-index: 100;
-            background: rgba(255,255,255,0.3); padding: 10px; border-radius: 10px;
+            display: flex; gap: 8px; z-index: 100;
+            background: rgba(255,255,255,0.3); padding: 8px; border-radius: 10px;
             backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
+        }
+
+        /* Квадратные кнопки управления как в плеере Win7 */
+        .ctrl-btn {
+            width: 45px; height: 45px; border-radius: 5px; font-size: 20px;
+            background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
+            border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .ctrl-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
+        .ctrl-btn:active { box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
+        .ctrl-btn.off {
+            background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
+            border-color: #bf7f7f;
+        }
+        .ctrl-btn.danger {
+            background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%);
+            border-color: #900; color: white; width: 60px;
         }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -173,8 +188,17 @@
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
             <button class="glossy-btn" id="connectBtn" style="margin-bottom: 10px;">📞 Позвонить</button>
-            <button class="glossy-btn" id="initMediaBtn" style="margin-bottom:10px;">🎥 Подключить камеру/микрофон</button>
+            <button class="glossy-btn" id="initMediaBtn" style="margin-bottom:10px;">🎥 Подключить устройства</button>
             
+            <!-- ПАНЕЛЬ НАСТРОЕК (Скрыта по умолчанию) -->
+            <div class="settings-panel" id="settingsPanel">
+                <label>Видеокамера:</label>
+                <select id="videoSource"></select>
+                <label>Микрофон:</label>
+                <select id="audioSource"></select>
+                <button class="glossy-btn" id="applySettingsBtn" style="font-size: 13px; padding: 6px;">💾 Применить устройства</button>
+            </div>
+
             <div class="incoming-box" id="incomingCall">
                 <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
                 <div class="action-buttons">
@@ -190,8 +214,11 @@
             <video id="localVideo" class="video-local" autoplay muted playsinline></video>
             
             <div class="call-controls">
-                <button class="glossy-btn" id="flipCamBtn" style="width: 50px;" title="Повернуть">🔄</button>
-                <button class="glossy-btn red" id="leaveCallBtn" style="width: 150px;">Отключиться</button>
+                <button class="ctrl-btn" id="toggleMicBtn" title="Микрофон">🎤</button>
+                <button class="ctrl-btn" id="toggleCamBtn" title="Камера">📷</button>
+                <button class="ctrl-btn" id="flipCamBtn" title="Повернуть камеру">🔄</button>
+                <button class="ctrl-btn" id="shareScreenBtn" title="Трансляция экрана">🖥️</button>
+                <button class="ctrl-btn danger" id="leaveCallBtn" title="Сбросить">📞</button>
             </div>
         </div>
     </div>
@@ -215,14 +242,20 @@
         document.getElementById('myIdDisplay').textContent = myId;
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. WEBRTC ПЕРЕМЕННЫЕ ---
+        // --- 2. WEBRTC ПЕРЕМЕННЫЕ И СОСТОЯНИЯ ---
         let localStream = null;
         let peerConnection = null;
         let inCall = false;
         let callRole = null; 
         let currentCallRef = null;
-        let currentFacingMode = 'user';
         let incomingOfferData = null;
+        
+        // Состояния устройств
+        let isAudioEnabled = true;
+        let isVideoEnabled = true;
+        let isScreenSharing = false;
+        let savedCameraTrack = null; // Для возврата с показа экрана на камеру
+        let currentFacingMode = 'user';
 
         const stunServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
 
@@ -231,58 +264,195 @@
             el.textContent = msg; el.className = 'status ' + type;
         }
 
-        // --- 3. ПОДКЛЮЧЕНИЕ КАМЕРЫ ---
-        document.getElementById('initMediaBtn').onclick = async () => {
+        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И НАСТРОЙКИ УСТРОЙСТВ ---
+        
+        // Получаем список устройств
+        async function getDevices() {
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { echoCancellation: true, noiseSuppression: true },
-                    video: { facingMode: currentFacingMode }
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoSelect = document.getElementById('videoSource');
+                const audioSelect = document.getElementById('audioSource');
+                videoSelect.innerHTML = ''; audioSelect.innerHTML = '';
+                
+                devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    if (device.kind === 'videoinput') {
+                        option.text = device.label || `Камера ${videoSelect.length + 1}`;
+                        videoSelect.appendChild(option);
+                    } else if (device.kind === 'audioinput') {
+                        option.text = device.label || `Микрофон ${audioSelect.length + 1}`;
+                        audioSelect.appendChild(option);
+                    }
                 });
+                document.getElementById('settingsPanel').style.display = 'block';
+            } catch (e) {
+                console.error("Ошибка получения устройств", e);
+            }
+        }
+
+        // Запуск потока с учетом выбранных настроек
+        async function startMedia() {
+            const videoId = document.getElementById('videoSource').value;
+            const audioId = document.getElementById('audioSource').value;
+            
+            let constraints = {
+                audio: audioId ? { deviceId: { exact: audioId } } : true,
+                video: videoId ? { deviceId: { exact: videoId } } : { facingMode: currentFacingMode }
+            };
+
+            try {
+                const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                // Если мы обновляем настройки во время звонка
+                if (localStream) {
+                    localStream.getTracks().forEach(t => t.stop());
+                }
+                
+                localStream = newStream;
                 document.getElementById('localVideo').srcObject = localStream;
                 document.getElementById('localVideo').style.display = 'block';
-                document.getElementById('initMediaBtn').textContent = '✅ Камера готова';
+                
+                // Применяем сохраненные состояния кнопок (Mute / No Video)
+                localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
+                localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
+                
+                // Если мы уже в звонке - подменяем треки на лету
+                if (peerConnection) {
+                    const audioSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                    const videoSender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    
+                    if (audioSender && localStream.getAudioTracks()[0]) audioSender.replaceTrack(localStream.getAudioTracks()[0]);
+                    if (videoSender && localStream.getVideoTracks()[0]) videoSender.replaceTrack(localStream.getVideoTracks()[0]);
+                }
+
+                // Логика отзеркаливания: если не выбрана конкретная камера, зеркалим фронталку
+                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+
+                document.getElementById('initMediaBtn').textContent = '✅ Устройства готовы';
                 updateStatus('Камера и микрофон готовы', 'success');
+                
+                // Загружаем список устройств, если еще не загрузили
+                if (document.getElementById('videoSource').options.length === 0) {
+                    await getDevices();
+                }
             } catch (e) {
-                console.warn("Камера недоступна, пробуем звук");
+                console.warn("Камера недоступна, пробуем только звук");
                 try {
-                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
                     document.getElementById('initMediaBtn').textContent = '🎤 Только звук';
                     updateStatus('Подключен только микрофон', 'warning');
+                    await getDevices();
                 } catch (err) {
                     alert('Нет доступа к устройствам');
                 }
             }
+        }
+
+        document.getElementById('initMediaBtn').onclick = startMedia;
+        document.getElementById('applySettingsBtn').onclick = () => {
+            if (isScreenSharing) {
+                alert("Остановите трансляцию экрана для смены камеры");
+                return;
+            }
+            startMedia();
         };
 
-        // --- 4. ПЕРЕВОРОТ КАМЕРЫ (С ФИКСАМИ) ---
-        document.getElementById('flipCamBtn').onclick = async () => {
-            if (!localStream) return;
-            const oldVideoTrack = localStream.getVideoTracks()[0];
-            if (oldVideoTrack) oldVideoTrack.stop();
-
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-
-            try {
-                const newStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode }
-                });
-                const newVideoTrack = newStream.getVideoTracks()[0];
-
-                localStream.removeTrack(oldVideoTrack);
-                localStream.addTrack(newVideoTrack);
-                document.getElementById('localVideo').srcObject = localStream;
-
-                if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(newVideoTrack);
-                }
-
-                // Визуально зеркалим только фронталку
-                document.getElementById('localVideo').style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
-            } catch (e) {
-                console.error("Ошибка поворота", e);
+        // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА (КНОПКИ) ---
+        
+        // Вкл/Выкл Микрофон
+        document.getElementById('toggleMicBtn').onclick = () => {
+            if (localStream && localStream.getAudioTracks().length > 0) {
+                isAudioEnabled = !isAudioEnabled;
+                localStream.getAudioTracks()[0].enabled = isAudioEnabled;
+                
+                const btn = document.getElementById('toggleMicBtn');
+                btn.classList.toggle('off', !isAudioEnabled);
+                btn.textContent = isAudioEnabled ? '🎤' : '🔇';
             }
         };
+
+        // Вкл/Выкл Камеру
+        document.getElementById('toggleCamBtn').onclick = () => {
+            if (localStream && localStream.getVideoTracks().length > 0) {
+                isVideoEnabled = !isVideoEnabled;
+                localStream.getVideoTracks()[0].enabled = isVideoEnabled;
+                
+                const btn = document.getElementById('toggleCamBtn');
+                btn.classList.toggle('off', !isVideoEnabled);
+                btn.textContent = isVideoEnabled ? '📷' : '🚫';
+            }
+        };
+
+        // Поворот камеры (для мобилок)
+        document.getElementById('flipCamBtn').onclick = async () => {
+            if (isScreenSharing) return alert("Остановите показ экрана");
+            // Сбрасываем выбранное устройство в селекте, чтобы сработал facingMode
+            document.getElementById('videoSource').value = ''; 
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            await startMedia();
+        };
+
+        // ТРАНСЛЯЦИЯ ЭКРАНА (Screen Share)
+        document.getElementById('shareScreenBtn').onclick = async () => {
+            if (isScreenSharing) {
+                stopScreenShare();
+            } else {
+                try {
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    const screenTrack = screenStream.getVideoTracks()[0];
+                    
+                    // Сохраняем текущий видео-трек камеры
+                    savedCameraTrack = localStream.getVideoTracks()[0];
+                    
+                    // Подменяем трек в локальном потоке
+                    if (savedCameraTrack) localStream.removeTrack(savedCameraTrack);
+                    localStream.addTrack(screenTrack);
+                    
+                    // Подменяем трек для собеседника
+                    if (peerConnection) {
+                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                        if (sender) sender.replaceTrack(screenTrack);
+                    }
+                    
+                    // Обновляем UI
+                    document.getElementById('localVideo').srcObject = localStream;
+                    document.getElementById('localVideo').style.transform = 'none'; // Не зеркалим экран
+                    
+                    isScreenSharing = true;
+                    document.getElementById('shareScreenBtn').classList.add('off'); // Делаем кнопку красной
+                    
+                    // Если пользователь нажал "Остановить" в шторке браузера
+                    screenTrack.onended = () => stopScreenShare();
+
+                } catch (e) {
+                    console.error("Трансляция экрана отменена", e);
+                }
+            }
+        };
+
+        function stopScreenShare() {
+            if (!isScreenSharing) return;
+            const screenTrack = localStream.getVideoTracks()[0];
+            if (screenTrack) screenTrack.stop();
+            
+            if (savedCameraTrack) {
+                localStream.removeTrack(screenTrack);
+                localStream.addTrack(savedCameraTrack);
+                
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(savedCameraTrack);
+                }
+                
+                document.getElementById('localVideo').srcObject = localStream;
+                const videoId = document.getElementById('videoSource').value;
+                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+            }
+            
+            isScreenSharing = false;
+            document.getElementById('shareScreenBtn').classList.remove('off');
+        }
 
         // --- 5. СОЗДАНИЕ PEER CONNECTION ---
         function createPeerConnection() {
@@ -290,8 +460,6 @@
 
             if (localStream) {
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                
-                // Фикс: если камеры нет, говорим что готовы принимать видео
                 if (localStream.getVideoTracks().length === 0) {
                     peerConnection.addTransceiver('video', { direction: 'recvonly' });
                 }
@@ -325,8 +493,7 @@
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
             
-            inCall = true;
-            callRole = 'caller';
+            inCall = true; callRole = 'caller';
             updateStatus('Дозвон...', 'warning');
             
             document.getElementById('menuScreen').style.display = 'none';
@@ -339,12 +506,8 @@
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
 
-            await currentCallRef.set({
-                callerId: myId,
-                offer: { type: offer.type, sdp: offer.sdp }
-            });
+            await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
 
-            // Слушаем ответ
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
@@ -352,7 +515,6 @@
                 }
             });
 
-            // Слушаем ICE кандидатов собеседника
             currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
                 const candidate = snapshot.val();
                 if (candidate && peerConnection.remoteDescription) {
@@ -360,7 +522,6 @@
                 }
             });
             
-            // Если сбросили на той стороне
             currentCallRef.on('value', snap => {
                 if (!snap.exists() && inCall) endCall();
             });
@@ -383,8 +544,7 @@
 
         document.getElementById('answerBtn').onclick = async () => {
             document.getElementById('incomingCall').classList.remove('active');
-            inCall = true;
-            callRole = 'callee';
+            inCall = true; callRole = 'callee';
             
             document.getElementById('menuScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.add('in-call');
@@ -413,6 +573,8 @@
 
         // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
         function endCall() {
+            if (isScreenSharing) stopScreenShare();
+            
             if (peerConnection) { peerConnection.close(); peerConnection = null; }
             if (currentCallRef) { currentCallRef.off(); currentCallRef.remove(); currentCallRef = null; }
             
