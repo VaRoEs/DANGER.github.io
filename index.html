@@ -204,13 +204,10 @@
             <div class="status success" id="status">В сети. Ожидание вызовов...</div>
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
-            <!-- Две кнопки для разных режимов звонка -->
             <div class="menu-buttons-row">
-                <button class="glossy-btn green" id="connectBtn" style="border-color: #7fbf7f;">📞 Обычный звонок</button>
-                <button class="glossy-btn" id="connectScreenBtn">🖥️ Звонок (Экран)</button>
+                <button class="glossy-btn" id="connectBtn">📞 Позвонить</button>
+                <button class="glossy-btn" id="initMediaBtn">⚙️ Устройства</button>
             </div>
-            
-            <button class="glossy-btn" id="initMediaBtn" style="margin-bottom: 15px;">⚙️ Настройки устройств</button>
             
             <div class="settings-panel" id="settingsPanel">
                 <label>Видеокамера:</label>
@@ -262,17 +259,10 @@
             localStorage.setItem('my_skype_id', myId);
         }
         document.getElementById('myIdDisplay').textContent = myId;
-        
-        // Очищаем БД на старте на всякий случай
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. ВЕЧНЫЕ ПОТОКИ ---
-        const localStream = new MediaStream();
-        const remoteStream = new MediaStream();
-        
-        document.getElementById('localVideo').srcObject = localStream;
-        document.getElementById('remoteVideo').srcObject = remoteStream;
-
+        // --- 2. WEBRTC ПЕРЕМЕННЫЕ И СОСТОЯНИЯ ---
+        let localStream = null;
         let peerConnection = null;
         let inCall = false;
         let callRole = null; 
@@ -291,18 +281,6 @@
         function updateStatus(msg, type = 'success') {
             const el = document.getElementById('status');
             el.textContent = msg; el.className = 'status ' + type;
-        }
-
-        function updateTransceivers() {
-            if (!peerConnection) return;
-            const audioTrack = localStream.getAudioTracks()[0] || null;
-            const videoTrack = localStream.getVideoTracks()[0] || null;
-
-            const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-            if (audioTransceiver) audioTransceiver.sender.replaceTrack(audioTrack);
-            
-            const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-            if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
         }
 
         // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И НАСТРОЙКИ УСТРОЙСТВ ---
@@ -343,8 +321,9 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            localStream.getTracks().forEach(t => t.stop());
-            localStream.getTracks().forEach(t => localStream.removeTrack(t));
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+            }
 
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId } } : true,
@@ -352,15 +331,20 @@
             };
 
             try {
-                const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                newStream.getTracks().forEach(t => localStream.addTrack(t));
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                document.getElementById('localVideo').srcObject = localStream;
                 document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
-                updateTransceivers();
+                if (peerConnection) {
+                    const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                    
+                    if (audioTransceiver && localStream.getAudioTracks()[0]) await audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
+                    if (videoTransceiver && localStream.getVideoTracks()[0]) await videoTransceiver.sender.replaceTrack(localStream.getVideoTracks()[0]);
+                }
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
                 updateStatus('Устройства успешно подключены', 'success');
@@ -371,11 +355,13 @@
             } catch (e) {
                 console.warn("Камера недоступна или занята, пробуем только звук", e);
                 try {
-                    const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
+                    document.getElementById('localVideo').srcObject = localStream;
                     
-                    audioStream.getTracks().forEach(t => localStream.addTrack(t));
-                    updateTransceivers();
-                    
+                    if (peerConnection) {
+                        const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+                        if (audioTransceiver && localStream.getAudioTracks()[0]) await audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
+                    }
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 } catch (err) {
@@ -403,7 +389,7 @@
 
         // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА ---
         document.getElementById('toggleMicBtn').onclick = () => {
-            if (localStream.getAudioTracks().length > 0) {
+            if (localStream && localStream.getAudioTracks().length > 0) {
                 isAudioEnabled = !isAudioEnabled;
                 localStream.getAudioTracks()[0].enabled = isAudioEnabled;
                 document.getElementById('toggleMicBtn').classList.toggle('off', !isAudioEnabled);
@@ -411,7 +397,7 @@
         };
 
         document.getElementById('toggleCamBtn').onclick = () => {
-            if (localStream.getVideoTracks().length > 0) {
+            if (localStream && localStream.getVideoTracks().length > 0) {
                 isVideoEnabled = !isVideoEnabled;
                 localStream.getVideoTracks()[0].enabled = isVideoEnabled;
                 document.getElementById('toggleCamBtn').classList.toggle('off', !isVideoEnabled);
@@ -443,59 +429,66 @@
             }
         };
 
-        // Логика захвата экрана (Вынесена в отдельную функцию)
-        async function startScreenShareLogic() {
-            if (isScreenSharing) return true;
-            try {
-                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                const screenTrack = screenStream.getVideoTracks()[0];
-                
-                savedCameraTrack = localStream.getVideoTracks()[0]; 
-                
-                if (savedCameraTrack) {
-                    localStream.removeTrack(savedCameraTrack); 
-                }
-                localStream.addTrack(screenTrack); 
-                
-                updateTransceivers();
-                
-                document.getElementById('localVideo').style.transform = 'none'; 
-                isScreenSharing = true;
-                document.getElementById('shareScreenBtn').classList.add('off'); 
-                
-                screenTrack.onended = () => stopScreenShare();
-                return true;
-            } catch (e) {
-                console.error("Трансляция экрана отменена", e);
-                return false;
-            }
-        }
-
+        // ТРАНСЛЯЦИЯ ЭКРАНА (С исправлением пустого трека)
         document.getElementById('shareScreenBtn').onclick = async () => {
             if (isScreenSharing) {
                 stopScreenShare();
             } else {
-                await startScreenShareLogic();
+                try {
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    const screenTrack = screenStream.getVideoTracks()[0];
+                    
+                    savedCameraTrack = localStream ? localStream.getVideoTracks()[0] : null;
+                    
+                    if (!localStream) {
+                        localStream = new MediaStream();
+                        document.getElementById('localVideo').srcObject = localStream;
+                    }
+                    
+                    if (savedCameraTrack) localStream.removeTrack(savedCameraTrack);
+                    localStream.addTrack(screenTrack);
+                    
+                    if (peerConnection) {
+                        const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                        // Добавлен await, чтобы 100% дождаться подмены трека
+                        if (videoTransceiver) {
+                            await videoTransceiver.sender.replaceTrack(screenTrack);
+                        }
+                    }
+                    
+                    document.getElementById('localVideo').style.transform = 'none'; 
+                    isScreenSharing = true;
+                    document.getElementById('shareScreenBtn').classList.add('off'); 
+                    
+                    screenTrack.onended = () => stopScreenShare();
+                } catch (e) {
+                    console.error("Трансляция экрана отменена", e);
+                }
             }
         };
 
-        function stopScreenShare() {
+        async function stopScreenShare() {
             if (!isScreenSharing) return;
-            
-            const currentVideoTrack = localStream.getVideoTracks()[0];
-            if (currentVideoTrack) {
-                currentVideoTrack.stop();
-                localStream.removeTrack(currentVideoTrack);
+            const screenTrack = localStream.getVideoTracks()[0];
+            if (screenTrack) {
+                screenTrack.stop();
+                localStream.removeTrack(screenTrack);
             }
             
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
-                savedCameraTrack = null;
+                if (peerConnection) {
+                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                    if (videoTransceiver) await videoTransceiver.sender.replaceTrack(savedCameraTrack);
+                }
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+            } else {
+                if (peerConnection) {
+                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+                    if (videoTransceiver) await videoTransceiver.sender.replaceTrack(null);
+                }
             }
-            
-            updateTransceivers();
             
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
@@ -505,19 +498,26 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
-            peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-            peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+            const audioTrack = localStream && localStream.getAudioTracks().length > 0 ? localStream.getAudioTracks()[0] : null;
+            const videoTrack = localStream && localStream.getVideoTracks().length > 0 ? localStream.getVideoTracks()[0] : null;
 
-            updateTransceivers();
+            if (audioTrack) peerConnection.addTransceiver(audioTrack, { direction: 'sendrecv', streams: [localStream] });
+            else peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
 
+            if (videoTrack) peerConnection.addTransceiver(videoTrack, { direction: 'sendrecv', streams: [localStream] });
+            else peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+
+            // ГЛАВНЫЙ ФИКС ОТОБРАЖЕНИЯ ЭКРАНА
             peerConnection.ontrack = event => {
-                if (!remoteStream.getTracks().includes(event.track)) {
-                    remoteStream.addTrack(event.track);
-                }
-                
                 const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.paused) {
-                    remoteVid.play().catch(e => console.warn(e));
+                // Мы больше не полагаемся на event.streams[0], так как он может быть пуст.
+                // Принудительно создаем MediaStream для тега <video> и цепляем пришедший трек.
+                if (!remoteVid.srcObject) {
+                    remoteVid.srcObject = new MediaStream();
+                }
+                // Проверяем, чтобы не добавлять трек дважды
+                if (!remoteVid.srcObject.getTracks().includes(event.track)) {
+                    remoteVid.srcObject.addTrack(event.track);
                 }
             };
 
@@ -534,16 +534,10 @@
             };
         }
 
-        // --- 6. ИСХОДЯЩИЙ ЗВОНОК (С ВЫБОРОМ РЕЖИМА) ---
-        async function initiateCall(withScreenShare) {
+        // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
+        document.getElementById('connectBtn').onclick = async () => {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
-
-            // Если выбран режим трансляции, сначала просим доступ к экрану
-            if (withScreenShare) {
-                const success = await startScreenShareLogic();
-                if (!success) return; // Если человек нажал "Отмена" при выборе окна — не звоним
-            }
             
             inCall = true; callRole = 'caller';
             updateStatus('Дозвон...', 'warning');
@@ -559,28 +553,32 @@
             await peerConnection.setLocalDescription(offer);
             await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
 
+            let pendingCandidates = [];
+
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    pendingCandidates.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
+                    pendingCandidates = [];
                 }
             });
 
             currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
                 const candidate = snapshot.val();
-                if (candidate && peerConnection.remoteDescription) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                if (candidate) {
+                    if (peerConnection.remoteDescription) {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } else {
+                        pendingCandidates.push(candidate);
+                    }
                 }
             });
             
             currentCallRef.on('value', snap => {
                 if (!snap.exists() && inCall) endCall();
             });
-        }
-
-        // Привязываем кнопки к функции
-        document.getElementById('connectBtn').onclick = () => initiateCall(false);
-        document.getElementById('connectScreenBtn').onclick = () => initiateCall(true);
+        };
 
         // --- 7. ВХОДЯЩИЕ ЗВОНКИ ---
         db.ref(`calls/${myId}`).on('value', snapshot => {
@@ -592,11 +590,8 @@
                 updateStatus('Входящий вызов...', 'warning');
             } else if (!data) {
                 document.getElementById('incomingCall').classList.remove('active');
-                if (inCall && callRole === 'callee') {
-                    endCall();
-                } else if (!inCall) {
-                    updateStatus('В сети. Ожидание вызовов...', 'success');
-                }
+                if (inCall && callRole === 'callee') endCall();
+                if (!inCall) updateStatus('В сети. Ожидание вызовов...', 'success');
             }
         });
 
@@ -628,7 +623,7 @@
             updateStatus('В сети', 'success');
         };
 
-        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА (ГЛАВНЫЙ ФИКС ЗОМБИ-ЗВОНКОВ) ---
+        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
         function endCall() {
             if (isScreenSharing) stopScreenShare();
             
@@ -637,33 +632,11 @@
                 document.getElementById('fullscreenBtn').classList.remove('off');
             }
             
-            if (peerConnection) { 
-                // Снимаем обработчики с WebRTC
-                peerConnection.onicecandidate = null;
-                peerConnection.ontrack = null;
-                peerConnection.onconnectionstatechange = null;
-                peerConnection.close(); 
-                peerConnection = null; 
-            }
+            if (peerConnection) { peerConnection.close(); peerConnection = null; }
+            if (currentCallRef) { currentCallRef.off(); currentCallRef.remove(); currentCallRef = null; }
             
-            if (currentCallRef) { 
-                // ВАЖНО: Снимаем ВСЕ старые лисенеры с БД перед удалением, 
-                // чтобы они не сработали при следующем звонке!
-                currentCallRef.child('answer').off();
-                currentCallRef.child('candidates').child('callee').off();
-                currentCallRef.child('candidates').child('caller').off();
-                currentCallRef.off(); 
-                
-                currentCallRef.remove(); 
-                currentCallRef = null; 
-            }
-            
-            // Очищаем экран собеседника
-            remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
-            
-            inCall = false; 
-            callRole = null; 
-            incomingOfferData = null;
+            document.getElementById('remoteVideo').srcObject = null;
+            inCall = false; callRole = null;
 
             document.getElementById('callScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.remove('in-call');
