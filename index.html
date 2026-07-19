@@ -204,6 +204,7 @@
             <div class="status success" id="status">В сети. Ожидание вызовов...</div>
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
+            <!-- Две кнопки для разных режимов звонка -->
             <div class="menu-buttons-row">
                 <button class="glossy-btn green" id="connectBtn" style="border-color: #7fbf7f;">📞 Обычный звонок</button>
                 <button class="glossy-btn" id="connectScreenBtn">🖥️ Звонок (Экран)</button>
@@ -261,6 +262,8 @@
             localStorage.setItem('my_skype_id', myId);
         }
         document.getElementById('myIdDisplay').textContent = myId;
+        
+        // Очищаем БД на старте на всякий случай
         db.ref(`calls/${myId}`).remove(); 
 
         // --- 2. ВЕЧНЫЕ ПОТОКИ ---
@@ -302,7 +305,7 @@
             if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
         }
 
-        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И ОПТИМИЗАЦИЯ ---
+        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И НАСТРОЙКИ УСТРОЙСТВ ---
         async function getDevices() {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
@@ -343,25 +346,16 @@
             localStream.getTracks().forEach(t => t.stop());
             localStream.getTracks().forEach(t => localStream.removeTrack(t));
 
-            // ОПТИМИЗАЦИЯ: Жесткие лимиты на разрешение и FPS, чтобы не вешать браузер
             let constraints = {
-                audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
-                video: videoId 
-                    ? { deviceId: { exact: videoId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } } 
-                    : { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }
+                audio: audioId ? { deviceId: { exact: audioId } } : true,
+                video: videoId ? { deviceId: { exact: videoId } } : { facingMode: currentFacingMode }
             };
 
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                newStream.getTracks().forEach(t => {
-                    if (t.kind === 'video') {
-                        t.contentHint = 'motion'; // ОПТИМИЗАЦИЯ: Делаем видео с камеры максимально плавным
-                    }
-                    localStream.addTrack(t);
-                });
-                
-                document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
+                newStream.getTracks().forEach(t => localStream.addTrack(t));
+                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
@@ -433,9 +427,7 @@
 
         document.getElementById('togglePipBtn').onclick = () => {
             isPipVisible = !isPipVisible;
-            if (!isScreenSharing) {
-                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-            }
+            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
             document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
         };
 
@@ -451,14 +443,12 @@
             }
         };
 
-        // Логика захвата экрана
+        // Логика захвата экрана (Вынесена в отдельную функцию)
         async function startScreenShareLogic() {
             if (isScreenSharing) return true;
             try {
-                // ОПТИМИЗАЦИЯ: Захватываем экран с нормальным FPS
-                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } } });
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 const screenTrack = screenStream.getVideoTracks()[0];
-                screenTrack.contentHint = 'detail'; // Подсказка для браузера - держать качество текста
                 
                 savedCameraTrack = localStream.getVideoTracks()[0]; 
                 
@@ -469,10 +459,7 @@
                 
                 updateTransceivers();
                 
-                // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Полностью скрываем маленькое окошко на время трансляции
-                document.getElementById('localVideo').style.display = 'none'; 
                 document.getElementById('localVideo').style.transform = 'none'; 
-                
                 isScreenSharing = true;
                 document.getElementById('shareScreenBtn').classList.add('off'); 
                 
@@ -509,9 +496,6 @@
             }
             
             updateTransceivers();
-            
-            // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Возвращаем окошко обратно (если оно не было выключено кнопкой)
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
             
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
@@ -550,14 +534,15 @@
             };
         }
 
-        // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
+        // --- 6. ИСХОДЯЩИЙ ЗВОНОК (С ВЫБОРОМ РЕЖИМА) ---
         async function initiateCall(withScreenShare) {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
 
+            // Если выбран режим трансляции, сначала просим доступ к экрану
             if (withScreenShare) {
                 const success = await startScreenShareLogic();
-                if (!success) return; 
+                if (!success) return; // Если человек нажал "Отмена" при выборе окна — не звоним
             }
             
             inCall = true; callRole = 'caller';
@@ -593,6 +578,7 @@
             });
         }
 
+        // Привязываем кнопки к функции
         document.getElementById('connectBtn').onclick = () => initiateCall(false);
         document.getElementById('connectScreenBtn').onclick = () => initiateCall(true);
 
@@ -642,7 +628,7 @@
             updateStatus('В сети', 'success');
         };
 
-        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
+        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА (ГЛАВНЫЙ ФИКС ЗОМБИ-ЗВОНКОВ) ---
         function endCall() {
             if (isScreenSharing) stopScreenShare();
             
@@ -652,6 +638,7 @@
             }
             
             if (peerConnection) { 
+                // Снимаем обработчики с WebRTC
                 peerConnection.onicecandidate = null;
                 peerConnection.ontrack = null;
                 peerConnection.onconnectionstatechange = null;
@@ -660,14 +647,18 @@
             }
             
             if (currentCallRef) { 
+                // ВАЖНО: Снимаем ВСЕ старые лисенеры с БД перед удалением, 
+                // чтобы они не сработали при следующем звонке!
                 currentCallRef.child('answer').off();
                 currentCallRef.child('candidates').child('callee').off();
                 currentCallRef.child('candidates').child('caller').off();
                 currentCallRef.off(); 
+                
                 currentCallRef.remove(); 
                 currentCallRef = null; 
             }
             
+            // Очищаем экран собеседника
             remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
             
             inCall = false; 
