@@ -39,7 +39,6 @@
             height: 85vh;
         }
 
-        /* Если включен полноэкранный режим */
         :fullscreen .aero-window {
             width: 100%; max-width: 100%; height: 100vh; border-radius: 0; border: none;
         }
@@ -322,7 +321,6 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            // ВАЖНОЕ ИСПРАВЛЕНИЕ ДЛЯ МОБИЛОК: Сначала отключаем старые треки, чтобы освободить железо!
             if (localStream) {
                 localStream.getTracks().forEach(t => t.stop());
             }
@@ -340,13 +338,12 @@
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
-                // ВАЖНОЕ ИСПРАВЛЕНИЕ: Используем getTransceivers для надежной замены треков на лету
                 if (peerConnection) {
                     const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
                     const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
                     
-                    if (audioTransceiver && localStream.getAudioTracks()[0]) audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
-                    if (videoTransceiver && localStream.getVideoTracks()[0]) videoTransceiver.sender.replaceTrack(localStream.getVideoTracks()[0]);
+                    if (audioTransceiver && localStream.getAudioTracks()[0]) await audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
+                    if (videoTransceiver && localStream.getVideoTracks()[0]) await videoTransceiver.sender.replaceTrack(localStream.getVideoTracks()[0]);
                 }
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
@@ -363,7 +360,7 @@
                     
                     if (peerConnection) {
                         const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-                        if (audioTransceiver && localStream.getAudioTracks()[0]) audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
+                        if (audioTransceiver && localStream.getAudioTracks()[0]) await audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
                     }
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
@@ -432,7 +429,7 @@
             }
         };
 
-        // ТРАНСЛЯЦИЯ ЭКРАНА
+        // ТРАНСЛЯЦИЯ ЭКРАНА (С исправлением пустого трека)
         document.getElementById('shareScreenBtn').onclick = async () => {
             if (isScreenSharing) {
                 stopScreenShare();
@@ -453,7 +450,10 @@
                     
                     if (peerConnection) {
                         const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                        if (videoTransceiver) videoTransceiver.sender.replaceTrack(screenTrack);
+                        // Добавлен await, чтобы 100% дождаться подмены трека
+                        if (videoTransceiver) {
+                            await videoTransceiver.sender.replaceTrack(screenTrack);
+                        }
                     }
                     
                     document.getElementById('localVideo').style.transform = 'none'; 
@@ -467,7 +467,7 @@
             }
         };
 
-        function stopScreenShare() {
+        async function stopScreenShare() {
             if (!isScreenSharing) return;
             const screenTrack = localStream.getVideoTracks()[0];
             if (screenTrack) {
@@ -479,14 +479,14 @@
                 localStream.addTrack(savedCameraTrack);
                 if (peerConnection) {
                     const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                    if (videoTransceiver) videoTransceiver.sender.replaceTrack(savedCameraTrack);
+                    if (videoTransceiver) await videoTransceiver.sender.replaceTrack(savedCameraTrack);
                 }
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             } else {
                 if (peerConnection) {
                     const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                    if (videoTransceiver) videoTransceiver.sender.replaceTrack(null);
+                    if (videoTransceiver) await videoTransceiver.sender.replaceTrack(null);
                 }
             }
             
@@ -498,7 +498,6 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
-            // ВАЖНОЕ ИСПРАВЛЕНИЕ: Форсируем sendrecv каналы сразу, чтобы можно было подхватить видео или экран позже
             const audioTrack = localStream && localStream.getAudioTracks().length > 0 ? localStream.getAudioTracks()[0] : null;
             const videoTrack = localStream && localStream.getVideoTracks().length > 0 ? localStream.getVideoTracks()[0] : null;
 
@@ -508,10 +507,17 @@
             if (videoTrack) peerConnection.addTransceiver(videoTrack, { direction: 'sendrecv', streams: [localStream] });
             else peerConnection.addTransceiver('video', { direction: 'sendrecv' });
 
+            // ГЛАВНЫЙ ФИКС ОТОБРАЖЕНИЯ ЭКРАНА
             peerConnection.ontrack = event => {
                 const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.srcObject !== event.streams[0]) {
-                    remoteVid.srcObject = event.streams[0];
+                // Мы больше не полагаемся на event.streams[0], так как он может быть пуст.
+                // Принудительно создаем MediaStream для тега <video> и цепляем пришедший трек.
+                if (!remoteVid.srcObject) {
+                    remoteVid.srcObject = new MediaStream();
+                }
+                // Проверяем, чтобы не добавлять трек дважды
+                if (!remoteVid.srcObject.getTracks().includes(event.track)) {
+                    remoteVid.srcObject.addTrack(event.track);
                 }
             };
 
@@ -547,14 +553,12 @@
             await peerConnection.setLocalDescription(offer);
             await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
 
-            // Очередь для устранения бага потери пакетов (ICE Candidate Race Condition)
             let pendingCandidates = [];
 
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                    // Добавляем кандидатов, которые могли прийти до установки RemoteDescription
                     pendingCandidates.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
                     pendingCandidates = [];
                 }
