@@ -204,10 +204,13 @@
             <div class="status success" id="status">В сети. Ожидание вызовов...</div>
             <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
             
+            <!-- Две кнопки для разных режимов звонка -->
             <div class="menu-buttons-row">
-                <button class="glossy-btn" id="connectBtn">📞 Позвонить</button>
-                <button class="glossy-btn" id="initMediaBtn">⚙️ Устройства</button>
+                <button class="glossy-btn green" id="connectBtn" style="border-color: #7fbf7f;">📞 Обычный звонок</button>
+                <button class="glossy-btn" id="connectScreenBtn">🖥️ Звонок (Экран)</button>
             </div>
+            
+            <button class="glossy-btn" id="initMediaBtn" style="margin-bottom: 15px;">⚙️ Настройки устройств</button>
             
             <div class="settings-panel" id="settingsPanel">
                 <label>Видеокамера:</label>
@@ -259,10 +262,11 @@
             localStorage.setItem('my_skype_id', myId);
         }
         document.getElementById('myIdDisplay').textContent = myId;
+        
+        // Очищаем БД на старте на всякий случай
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. ВЕЧНЫЕ ПОТОКИ (ГЛАВНЫЙ ФИКС ЗВУКА И ВИДЕО) ---
-        // Мы создаем их один раз. Браузер больше никогда не потеряет к ним доступ.
+        // --- 2. ВЕЧНЫЕ ПОТОКИ ---
         const localStream = new MediaStream();
         const remoteStream = new MediaStream();
         
@@ -289,7 +293,6 @@
             el.textContent = msg; el.className = 'status ' + type;
         }
 
-        // Централизованная функция для синхронизации треков с собеседником
         function updateTransceivers() {
             if (!peerConnection) return;
             const audioTrack = localStream.getAudioTracks()[0] || null;
@@ -340,9 +343,7 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            // Жестко останавливаем старое железо
             localStream.getTracks().forEach(t => t.stop());
-            // Очищаем локальный "вечный поток"
             localStream.getTracks().forEach(t => localStream.removeTrack(t));
 
             let constraints = {
@@ -353,14 +354,12 @@
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                // Добавляем новые треки в наш вечный поток
                 newStream.getTracks().forEach(t => localStream.addTrack(t));
                 document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
-                // Синхронизируем с WebRTC
                 updateTransceivers();
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
@@ -444,47 +443,51 @@
             }
         };
 
-        // ТРАНСЛЯЦИЯ ЭКРАНА
+        // Логика захвата экрана (Вынесена в отдельную функцию)
+        async function startScreenShareLogic() {
+            if (isScreenSharing) return true;
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const screenTrack = screenStream.getVideoTracks()[0];
+                
+                savedCameraTrack = localStream.getVideoTracks()[0]; 
+                
+                if (savedCameraTrack) {
+                    localStream.removeTrack(savedCameraTrack); 
+                }
+                localStream.addTrack(screenTrack); 
+                
+                updateTransceivers();
+                
+                document.getElementById('localVideo').style.transform = 'none'; 
+                isScreenSharing = true;
+                document.getElementById('shareScreenBtn').classList.add('off'); 
+                
+                screenTrack.onended = () => stopScreenShare();
+                return true;
+            } catch (e) {
+                console.error("Трансляция экрана отменена", e);
+                return false;
+            }
+        }
+
         document.getElementById('shareScreenBtn').onclick = async () => {
             if (isScreenSharing) {
                 stopScreenShare();
             } else {
-                try {
-                    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                    const screenTrack = screenStream.getVideoTracks()[0];
-                    
-                    savedCameraTrack = localStream.getVideoTracks()[0]; // Запоминаем камеру
-                    
-                    if (savedCameraTrack) {
-                        localStream.removeTrack(savedCameraTrack); // Убираем камеру из потока
-                    }
-                    localStream.addTrack(screenTrack); // Вставляем экран
-                    
-                    // Обновляем WebRTC (оно автоматом подхватит screenTrack)
-                    updateTransceivers();
-                    
-                    document.getElementById('localVideo').style.transform = 'none'; 
-                    isScreenSharing = true;
-                    document.getElementById('shareScreenBtn').classList.add('off'); 
-                    
-                    screenTrack.onended = () => stopScreenShare();
-                } catch (e) {
-                    console.error("Трансляция экрана отменена", e);
-                }
+                await startScreenShareLogic();
             }
         };
 
         function stopScreenShare() {
             if (!isScreenSharing) return;
             
-            // Находим и останавливаем трек экрана
             const currentVideoTrack = localStream.getVideoTracks()[0];
             if (currentVideoTrack) {
                 currentVideoTrack.stop();
                 localStream.removeTrack(currentVideoTrack);
             }
             
-            // Возвращаем камеру, если она была
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
                 savedCameraTrack = null;
@@ -492,7 +495,6 @@
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
             
-            // Отправляем изменения собеседнику
             updateTransceivers();
             
             isScreenSharing = false;
@@ -503,21 +505,16 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
-            // ЗАСТАВЛЯЕМ WebRTC всегда создавать 2 канала (аудио и видео), 
-            // даже если камера/микрофон выключены!
             peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
             peerConnection.addTransceiver('video', { direction: 'sendrecv' });
 
-            // Подключаем текущие треки к каналам
             updateTransceivers();
 
             peerConnection.ontrack = event => {
-                // Плавно добавляем входящие треки в вечный remoteStream
                 if (!remoteStream.getTracks().includes(event.track)) {
                     remoteStream.addTrack(event.track);
                 }
                 
-                // Фикс для телефонов/Safari (иногда видео нужно "пнуть" для автоплея)
                 const remoteVid = document.getElementById('remoteVideo');
                 if (remoteVid.paused) {
                     remoteVid.play().catch(e => console.warn(e));
@@ -537,10 +534,16 @@
             };
         }
 
-        // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
-        document.getElementById('connectBtn').onclick = async () => {
+        // --- 6. ИСХОДЯЩИЙ ЗВОНОК (С ВЫБОРОМ РЕЖИМА) ---
+        async function initiateCall(withScreenShare) {
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
+
+            // Если выбран режим трансляции, сначала просим доступ к экрану
+            if (withScreenShare) {
+                const success = await startScreenShareLogic();
+                if (!success) return; // Если человек нажал "Отмена" при выборе окна — не звоним
+            }
             
             inCall = true; callRole = 'caller';
             updateStatus('Дозвон...', 'warning');
@@ -556,32 +559,28 @@
             await peerConnection.setLocalDescription(offer);
             await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
 
-            let pendingCandidates = [];
-
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                    pendingCandidates.forEach(c => peerConnection.addIceCandidate(new RTCIceCandidate(c)));
-                    pendingCandidates = [];
                 }
             });
 
             currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
                 const candidate = snapshot.val();
-                if (candidate) {
-                    if (peerConnection.remoteDescription) {
-                        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                    } else {
-                        pendingCandidates.push(candidate);
-                    }
+                if (candidate && peerConnection.remoteDescription) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
                 }
             });
             
             currentCallRef.on('value', snap => {
                 if (!snap.exists() && inCall) endCall();
             });
-        };
+        }
+
+        // Привязываем кнопки к функции
+        document.getElementById('connectBtn').onclick = () => initiateCall(false);
+        document.getElementById('connectScreenBtn').onclick = () => initiateCall(true);
 
         // --- 7. ВХОДЯЩИЕ ЗВОНКИ ---
         db.ref(`calls/${myId}`).on('value', snapshot => {
@@ -593,8 +592,11 @@
                 updateStatus('Входящий вызов...', 'warning');
             } else if (!data) {
                 document.getElementById('incomingCall').classList.remove('active');
-                if (inCall && callRole === 'callee') endCall();
-                if (!inCall) updateStatus('В сети. Ожидание вызовов...', 'success');
+                if (inCall && callRole === 'callee') {
+                    endCall();
+                } else if (!inCall) {
+                    updateStatus('В сети. Ожидание вызовов...', 'success');
+                }
             }
         });
 
@@ -626,7 +628,7 @@
             updateStatus('В сети', 'success');
         };
 
-        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
+        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА (ГЛАВНЫЙ ФИКС ЗОМБИ-ЗВОНКОВ) ---
         function endCall() {
             if (isScreenSharing) stopScreenShare();
             
@@ -635,13 +637,33 @@
                 document.getElementById('fullscreenBtn').classList.remove('off');
             }
             
-            if (peerConnection) { peerConnection.close(); peerConnection = null; }
-            if (currentCallRef) { currentCallRef.off(); currentCallRef.remove(); currentCallRef = null; }
+            if (peerConnection) { 
+                // Снимаем обработчики с WebRTC
+                peerConnection.onicecandidate = null;
+                peerConnection.ontrack = null;
+                peerConnection.onconnectionstatechange = null;
+                peerConnection.close(); 
+                peerConnection = null; 
+            }
             
-            // Очищаем экран собеседника, чтобы не висел последний кадр
+            if (currentCallRef) { 
+                // ВАЖНО: Снимаем ВСЕ старые лисенеры с БД перед удалением, 
+                // чтобы они не сработали при следующем звонке!
+                currentCallRef.child('answer').off();
+                currentCallRef.child('candidates').child('callee').off();
+                currentCallRef.child('candidates').child('caller').off();
+                currentCallRef.off(); 
+                
+                currentCallRef.remove(); 
+                currentCallRef = null; 
+            }
+            
+            // Очищаем экран собеседника
             remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
             
-            inCall = false; callRole = null;
+            inCall = false; 
+            callRole = null; 
+            incomingOfferData = null;
 
             document.getElementById('callScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.remove('in-call');
