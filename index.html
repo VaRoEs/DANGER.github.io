@@ -261,8 +261,14 @@
         document.getElementById('myIdDisplay').textContent = myId;
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. WEBRTC ПЕРЕМЕННЫЕ И СОСТОЯНИЯ ---
-        let localStream = null;
+        // --- 2. ВЕЧНЫЕ ПОТОКИ (ГЛАВНЫЙ ФИКС ЗВУКА И ВИДЕО) ---
+        // Мы создаем их один раз. Браузер больше никогда не потеряет к ним доступ.
+        const localStream = new MediaStream();
+        const remoteStream = new MediaStream();
+        
+        document.getElementById('localVideo').srcObject = localStream;
+        document.getElementById('remoteVideo').srcObject = remoteStream;
+
         let peerConnection = null;
         let inCall = false;
         let callRole = null; 
@@ -281,6 +287,19 @@
         function updateStatus(msg, type = 'success') {
             const el = document.getElementById('status');
             el.textContent = msg; el.className = 'status ' + type;
+        }
+
+        // Централизованная функция для синхронизации треков с собеседником
+        function updateTransceivers() {
+            if (!peerConnection) return;
+            const audioTrack = localStream.getAudioTracks()[0] || null;
+            const videoTrack = localStream.getVideoTracks()[0] || null;
+
+            const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+            if (audioTransceiver) audioTransceiver.sender.replaceTrack(audioTrack);
+            
+            const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+            if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
         }
 
         // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И НАСТРОЙКИ УСТРОЙСТВ ---
@@ -321,9 +340,10 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-            }
+            // Жестко останавливаем старое железо
+            localStream.getTracks().forEach(t => t.stop());
+            // Очищаем локальный "вечный поток"
+            localStream.getTracks().forEach(t => localStream.removeTrack(t));
 
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId } } : true,
@@ -331,20 +351,17 @@
             };
 
             try {
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                document.getElementById('localVideo').srcObject = localStream;
+                const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                // Добавляем новые треки в наш вечный поток
+                newStream.getTracks().forEach(t => localStream.addTrack(t));
                 document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
-                if (peerConnection) {
-                    const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                    
-                    if (audioTransceiver && localStream.getAudioTracks()[0]) await audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
-                    if (videoTransceiver && localStream.getVideoTracks()[0]) await videoTransceiver.sender.replaceTrack(localStream.getVideoTracks()[0]);
-                }
+                // Синхронизируем с WebRTC
+                updateTransceivers();
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
                 updateStatus('Устройства успешно подключены', 'success');
@@ -355,13 +372,11 @@
             } catch (e) {
                 console.warn("Камера недоступна или занята, пробуем только звук", e);
                 try {
-                    localStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    document.getElementById('localVideo').srcObject = localStream;
+                    const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
                     
-                    if (peerConnection) {
-                        const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-                        if (audioTransceiver && localStream.getAudioTracks()[0]) await audioTransceiver.sender.replaceTrack(localStream.getAudioTracks()[0]);
-                    }
+                    audioStream.getTracks().forEach(t => localStream.addTrack(t));
+                    updateTransceivers();
+                    
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 } catch (err) {
@@ -389,7 +404,7 @@
 
         // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА ---
         document.getElementById('toggleMicBtn').onclick = () => {
-            if (localStream && localStream.getAudioTracks().length > 0) {
+            if (localStream.getAudioTracks().length > 0) {
                 isAudioEnabled = !isAudioEnabled;
                 localStream.getAudioTracks()[0].enabled = isAudioEnabled;
                 document.getElementById('toggleMicBtn').classList.toggle('off', !isAudioEnabled);
@@ -397,7 +412,7 @@
         };
 
         document.getElementById('toggleCamBtn').onclick = () => {
-            if (localStream && localStream.getVideoTracks().length > 0) {
+            if (localStream.getVideoTracks().length > 0) {
                 isVideoEnabled = !isVideoEnabled;
                 localStream.getVideoTracks()[0].enabled = isVideoEnabled;
                 document.getElementById('toggleCamBtn').classList.toggle('off', !isVideoEnabled);
@@ -438,22 +453,15 @@
                     const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                     const screenTrack = screenStream.getVideoTracks()[0];
                     
-                    savedCameraTrack = localStream ? localStream.getVideoTracks()[0] : null;
+                    savedCameraTrack = localStream.getVideoTracks()[0]; // Запоминаем камеру
                     
-                    if (!localStream) {
-                        localStream = new MediaStream();
-                        document.getElementById('localVideo').srcObject = localStream;
+                    if (savedCameraTrack) {
+                        localStream.removeTrack(savedCameraTrack); // Убираем камеру из потока
                     }
+                    localStream.addTrack(screenTrack); // Вставляем экран
                     
-                    if (savedCameraTrack) localStream.removeTrack(savedCameraTrack);
-                    localStream.addTrack(screenTrack);
-                    
-                    if (peerConnection) {
-                        const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                        if (videoTransceiver) {
-                            await videoTransceiver.sender.replaceTrack(screenTrack);
-                        }
-                    }
+                    // Обновляем WebRTC (оно автоматом подхватит screenTrack)
+                    updateTransceivers();
                     
                     document.getElementById('localVideo').style.transform = 'none'; 
                     isScreenSharing = true;
@@ -466,71 +474,53 @@
             }
         };
 
-        async function stopScreenShare() {
+        function stopScreenShare() {
             if (!isScreenSharing) return;
-            const screenTrack = localStream.getVideoTracks()[0];
-            if (screenTrack) {
-                screenTrack.stop();
-                localStream.removeTrack(screenTrack);
+            
+            // Находим и останавливаем трек экрана
+            const currentVideoTrack = localStream.getVideoTracks()[0];
+            if (currentVideoTrack) {
+                currentVideoTrack.stop();
+                localStream.removeTrack(currentVideoTrack);
             }
             
+            // Возвращаем камеру, если она была
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
-                if (peerConnection) {
-                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                    if (videoTransceiver) await videoTransceiver.sender.replaceTrack(savedCameraTrack);
-                }
+                savedCameraTrack = null;
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
-            } else {
-                if (peerConnection) {
-                    const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-                    if (videoTransceiver) await videoTransceiver.sender.replaceTrack(null);
-                }
             }
+            
+            // Отправляем изменения собеседнику
+            updateTransceivers();
             
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
         }
 
-        // --- 5. СОЗДАНИЕ PEER CONNECTION (ФИНАЛЬНЫЙ ФИКС ДЛЯ КАМЕРЫ И ЭКРАНА) ---
+        // --- 5. СОЗДАНИЕ PEER CONNECTION ---
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(stunServers);
 
-            // Гарантируем, что localStream всегда существует (даже пустой), 
-            // чтобы WebRTC создал "контейнер" для треков
-            if (!localStream) {
-                localStream = new MediaStream();
-                document.getElementById('localVideo').srcObject = localStream;
-            }
+            // ЗАСТАВЛЯЕМ WebRTC всегда создавать 2 канала (аудио и видео), 
+            // даже если камера/микрофон выключены!
+            peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+            peerConnection.addTransceiver('video', { direction: 'sendrecv' });
 
-            const audioTrack = localStream.getAudioTracks().length > 0 ? localStream.getAudioTracks()[0] : null;
-            const videoTrack = localStream.getVideoTracks().length > 0 ? localStream.getVideoTracks()[0] : null;
-
-            // ЯВНО прокидываем streams: [localStream], чтобы приемник сгруппировал их
-            peerConnection.addTransceiver(audioTrack || 'audio', { direction: 'sendrecv', streams: [localStream] });
-            peerConnection.addTransceiver(videoTrack || 'video', { direction: 'sendrecv', streams: [localStream] });
+            // Подключаем текущие треки к каналам
+            updateTransceivers();
 
             peerConnection.ontrack = event => {
-                const remoteVid = document.getElementById('remoteVideo');
+                // Плавно добавляем входящие треки в вечный remoteStream
+                if (!remoteStream.getTracks().includes(event.track)) {
+                    remoteStream.addTrack(event.track);
+                }
                 
-                // Если WebRTC сам сгруппировал поток (как мы ему и приказали выше), доверяем ему:
-                if (event.streams && event.streams.length > 0) {
-                    if (remoteVid.srcObject !== event.streams[0]) {
-                        remoteVid.srcObject = event.streams[0];
-                    }
-                } else {
-                    // Страховочный фолбэк для старых браузеров
-                    if (!remoteVid.srcObject) {
-                        remoteVid.srcObject = new MediaStream();
-                    }
-                    if (!remoteVid.srcObject.getTracks().includes(event.track)) {
-                        remoteVid.srcObject.addTrack(event.track);
-                    }
-                    // "Дергаем" видеоэлемент, чтобы он заметил добавление трека
-                    const tempStream = remoteVid.srcObject;
-                    remoteVid.srcObject = null;
-                    remoteVid.srcObject = tempStream;
+                // Фикс для телефонов/Safari (иногда видео нужно "пнуть" для автоплея)
+                const remoteVid = document.getElementById('remoteVideo');
+                if (remoteVid.paused) {
+                    remoteVid.play().catch(e => console.warn(e));
                 }
             };
 
@@ -648,7 +638,9 @@
             if (peerConnection) { peerConnection.close(); peerConnection = null; }
             if (currentCallRef) { currentCallRef.off(); currentCallRef.remove(); currentCallRef = null; }
             
-            document.getElementById('remoteVideo').srcObject = null;
+            // Очищаем экран собеседника, чтобы не висел последний кадр
+            remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
+            
             inCall = false; callRole = null;
 
             document.getElementById('callScreen').style.display = 'none';
