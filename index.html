@@ -1,718 +1,672 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Win7 Скайп (Full WebRTC)</title>
+```
+<!-- Подключаем Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<style>
+    /* --- СТИЛЬ WINDOWS 7 AERO GLASS --- */
+    @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap');
     
-    <!-- Подключаем Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    
+    body {
+        background: radial-gradient(circle at 50% 100%, #2989D8 0%, #155A8A 50%, #00284F 100%);
+        min-height: 100vh; height: 100dvh; display: flex; 
+        justify-content: center; align-items: center; overflow: hidden;
+    }
+    
+    .aero-window {
+        width: 95%; max-width: 450px; min-height: 400px;
+        background: rgba(255, 255, 255, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow: 0 0 15px rgba(0,0,0,0.5), inset 0 0 25px rgba(255,255,255,0.7);
+        border-radius: 8px;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        position: relative;
+        display: flex; flex-direction: column;
+        transition: max-width 0.5s ease-in-out, height 0.5s ease-in-out, border-radius 0.3s;
+    }
 
-    <style>
-        /* --- СТИЛЬ WINDOWS 7 AERO GLASS --- */
-        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap');
-        
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        body {
-            background: radial-gradient(circle at 50% 100%, #2989D8 0%, #155A8A 50%, #00284F 100%);
-            min-height: 100vh; height: 100dvh; display: flex; 
-            justify-content: center; align-items: center; overflow: hidden;
-        }
-        
-        .aero-window {
-            width: 95%; max-width: 450px; min-height: 400px;
-            background: rgba(255, 255, 255, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: 0 0 15px rgba(0,0,0,0.5), inset 0 0 25px rgba(255,255,255,0.7);
-            border-radius: 8px;
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            position: relative;
-            display: flex; flex-direction: column;
-            transition: max-width 0.5s ease-in-out, height 0.5s ease-in-out, border-radius 0.3s;
-        }
+    .aero-window.in-call {
+        max-width: 1000px;
+        height: 85vh;
+    }
 
-        .aero-window.in-call {
-            max-width: 1000px;
-            height: 85vh;
-        }
+    :fullscreen .aero-window {
+        width: 100%; max-width: 100%; height: 100vh; border-radius: 0; border: none;
+    }
 
-        :fullscreen .aero-window {
-            width: 100%; max-width: 100%; height: 100vh; border-radius: 0; border: none;
-        }
+    .title-bar {
+        background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(220,220,220,0.3) 100%);
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.5);
+        border-top-left-radius: 7px; border-top-right-radius: 7px;
+        display: flex; justify-content: space-between; align-items: center;
+        flex-shrink: 0;
+    }
+    :fullscreen .title-bar { border-radius: 0; }
+    
+    .title-bar .title {
+        color: #000; font-size: 14px; font-weight: 600; text-shadow: 0 0 5px #fff, 0 0 10px #fff;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .title-bar .controls { display: flex; gap: 4px; }
+    
+    .win-btn {
+        width: 26px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); cursor: pointer;
+    }
+    .win-btn.close { background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%); }
 
-        .title-bar {
-            background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(220,220,220,0.3) 100%);
-            padding: 8px 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.5);
-            border-top-left-radius: 7px; border-top-right-radius: 7px;
-            display: flex; justify-content: space-between; align-items: center;
-            flex-shrink: 0;
-        }
-        :fullscreen .title-bar { border-radius: 0; }
-        
-        .title-bar .title {
-            color: #000; font-size: 14px; font-weight: 600; text-shadow: 0 0 5px #fff, 0 0 10px #fff;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .title-bar .controls { display: flex; gap: 4px; }
-        
-        .win-btn {
-            width: 26px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); cursor: pointer;
-        }
-        .win-btn.close { background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%); }
+    .content-area {
+        background: #fff; margin: 0 5px 5px 5px; border-radius: 3px;
+        border: 1px solid rgba(0,0,0,0.3); padding: 20px; 
+        display: flex; flex-direction: column; align-items: center;
+        flex-grow: 1; overflow-y: auto;
+    }
+    :fullscreen .content-area { margin: 0; border-radius: 0; border: none; }
 
-        .content-area {
-            background: #fff; margin: 0 5px 5px 5px; border-radius: 3px;
-            border: 1px solid rgba(0,0,0,0.3); padding: 20px; 
-            display: flex; flex-direction: column; align-items: center;
-            flex-grow: 1; overflow-y: auto;
-        }
-        :fullscreen .content-area { margin: 0; border-radius: 0; border: none; }
+    h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
+    
+    .id-box { 
+        background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 15px; 
+        width: 100%; border: 1px solid #cdd8e4; text-align: center;
+    }
+    .id-box p { color: #555; font-size: 13px; margin-bottom: 5px; }
+    .my-id { font-size: 36px; color: #003399; letter-spacing: 3px; font-family: 'Consolas', monospace; }
+    
+    .status { 
+        padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 15px; 
+        font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
+    }
+    .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
+    .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
+    
+    input[type="text"] {
+        width: 100%; padding: 10px; border: 1px solid #abadb3; border-radius: 3px; font-size: 18px;
+        text-align: center; margin-bottom: 15px; outline: none; background: #fff;
+    }
+    input[type="text"]:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
+    
+    .menu-buttons-row { display: flex; gap: 10px; width: 100%; margin-bottom: 10px; }
 
-        h2 { color: #003399; font-size: 20px; margin-bottom: 20px; font-weight: 400; }
-        
-        .id-box { 
-            background: #f0f4f8; padding: 15px; border-radius: 5px; margin-bottom: 15px; 
-            width: 100%; border: 1px solid #cdd8e4; text-align: center;
-        }
-        .id-box p { color: #555; font-size: 13px; margin-bottom: 5px; }
-        .my-id { font-size: 36px; color: #003399; letter-spacing: 3px; font-family: 'Consolas', monospace; }
-        
-        .status { 
-            padding: 8px; border-radius: 3px; font-weight: 600; margin-bottom: 15px; 
-            font-size: 13px; width: 100%; text-align: center; border: 1px solid transparent;
-        }
-        .status.success { background: #dff0d8; color: #3c763d; border-color: #d6e9c6; }
-        .status.warning { background: #fcf8e3; color: #8a6d3b; border-color: #faebcc; }
-        
-        input[type="text"] {
-            width: 100%; padding: 10px; border: 1px solid #abadb3; border-radius: 3px; font-size: 18px;
-            text-align: center; margin-bottom: 15px; outline: none; background: #fff;
-        }
-        input[type="text"]:focus { border-color: #3399ff; box-shadow: 0 0 5px rgba(51,153,255,0.5); }
-        
-        .menu-buttons-row { display: flex; gap: 10px; width: 100%; margin-bottom: 10px; }
+    .glossy-btn {
+        width: 100%; padding: 10px; border-radius: 3px; font-size: 14px; font-weight: 600;
+        background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
+        border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .glossy-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
+    .glossy-btn.green { background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%); border-color: #7fbf7f; }
+    .glossy-btn.red { background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%); border-color: #bf7f7f; }
 
-        .glossy-btn {
-            width: 100%; padding: 10px; border-radius: 3px; font-size: 14px; font-weight: 600;
-            background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
-            border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
-        }
-        .glossy-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
-        .glossy-btn.green { background: linear-gradient(to bottom, #f4fbf4 0%, #dcf0dc 49%, #c3e6c3 50%, #a8d9a8 100%); border-color: #7fbf7f; }
-        .glossy-btn.red { background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%); border-color: #bf7f7f; }
+    .settings-panel {
+        width: 100%; background: #f9f9f9; border: 1px solid #d9d9d9;
+        padding: 15px; border-radius: 3px; margin-bottom: 15px; display: none;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .settings-panel label { display: block; font-size: 12px; color: #555; margin-bottom: 5px; font-weight: 600; }
+    .settings-panel select { 
+        width: 100%; padding: 6px; margin-bottom: 12px; border: 1px solid #abadb3; 
+        border-radius: 3px; outline: none; font-family: 'Segoe UI'; font-size: 13px;
+    }
 
-        .settings-panel {
-            width: 100%; background: #f9f9f9; border: 1px solid #d9d9d9;
-            padding: 15px; border-radius: 3px; margin-bottom: 15px; display: none;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
-        }
-        .settings-panel label { display: block; font-size: 12px; color: #555; margin-bottom: 5px; font-weight: 600; }
-        .settings-panel select { 
-            width: 100%; padding: 6px; margin-bottom: 12px; border: 1px solid #abadb3; 
-            border-radius: 3px; outline: none; font-family: 'Segoe UI'; font-size: 13px;
-        }
+    .incoming-box {
+        display: none; background: #ffffcc; border: 1px solid #ffcc00;
+        padding: 15px; border-radius: 3px; margin-top: 15px; width: 100%; text-align: center;
+    }
+    .incoming-box.active { display: block; animation: popIn 0.3s ease-out; }
+    .action-buttons { display: flex; gap: 5px; }
 
-        .incoming-box {
-            display: none; background: #ffffcc; border: 1px solid #ffcc00;
-            padding: 15px; border-radius: 3px; margin-top: 15px; width: 100%; text-align: center;
-        }
-        .incoming-box.active { display: block; animation: popIn 0.3s ease-out; }
-        .action-buttons { display: flex; gap: 5px; }
+    #callScreen {
+        display: none; width: 100%; flex-grow: 1; position: relative;
+        background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
+        animation: fadeIn 0.5s ease-in-out;
+    }
+    :fullscreen #callScreen { border-radius: 0; }
+    
+    .video-remote { width: 100%; height: 100%; object-fit: contain; background: #111; }
+    
+    .video-local {
+        position: absolute; bottom: 90px; right: 20px; 
+        width: 160px; height: 120px; 
+        object-fit: cover; border-radius: 8px; background: #222; 
+        border: 2px solid rgba(255,255,255,0.7);
+        box-shadow: 0 0 15px rgba(0,0,0,0.7);
+        transform: scaleX(-1); z-index: 5; display: none;
+        transition: opacity 0.3s ease;
+    }
 
-        #callScreen {
-            display: none; width: 100%; flex-grow: 1; position: relative;
-            background: #000; border-radius: 0 0 7px 7px; overflow: hidden;
-            animation: fadeIn 0.5s ease-in-out;
-        }
-        :fullscreen #callScreen { border-radius: 0; }
-        
-        .video-remote { width: 100%; height: 100%; object-fit: contain; background: #111; }
-        
-        .video-local {
-            position: absolute; bottom: 90px; right: 20px; 
-            width: 160px; height: 120px; 
-            object-fit: cover; border-radius: 8px; background: #222; 
-            border: 2px solid rgba(255,255,255,0.7);
-            box-shadow: 0 0 15px rgba(0,0,0,0.7);
-            transform: scaleX(-1); z-index: 5; display: none;
-            transition: opacity 0.3s ease;
-        }
+    .call-controls {
+        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 8px; z-index: 100; flex-wrap: wrap; justify-content: center;
+        background: rgba(255,255,255,0.3); padding: 8px; border-radius: 10px;
+        backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
+        width: max-content; max-width: 95%;
+    }
 
-        .call-controls {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; z-index: 100; flex-wrap: wrap; justify-content: center;
-            background: rgba(255,255,255,0.3); padding: 8px; border-radius: 10px;
-            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.5);
-            width: max-content; max-width: 95%;
-        }
+    .ctrl-btn {
+        width: 45px; height: 45px; border-radius: 5px; font-size: 20px;
+        background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
+        border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
+        display: flex; justify-content: center; align-items: center; text-decoration: none;
+    }
+    .ctrl-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
+    .ctrl-btn:active { box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
+    
+    .ctrl-btn.off {
+        background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
+        border-color: #bf7f7f; opacity: 0.9;
+    }
+    
+    .ctrl-btn.danger {
+        background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%);
+        border-color: #900; color: white; width: 60px;
+    }
 
-        .ctrl-btn {
-            width: 45px; height: 45px; border-radius: 5px; font-size: 20px;
-            background: linear-gradient(to bottom, #f2f9fe 0%, #d6f0fd 49%, #bee6fd 50%, #a7d9f5 100%);
-            border: 1px solid #7ebef7; color: #000; cursor: pointer; transition: 0.1s;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 2px rgba(0,0,0,0.1);
-            display: flex; justify-content: center; align-items: center; text-decoration: none;
-        }
-        .ctrl-btn:hover { background: linear-gradient(to bottom, #e2f4fe 0%, #c6eafc 49%, #9edafb 50%, #87cbf3 100%); }
-        .ctrl-btn:active { box-shadow: inset 0 1px 3px rgba(0,0,0,0.3); }
-        
-        .ctrl-btn.off {
-            background: linear-gradient(to bottom, #fbf4f4 0%, #f0dcdc 49%, #e6c3c3 50%, #d9a8a8 100%);
-            border-color: #bf7f7f; opacity: 0.9;
-        }
-        
-        .ctrl-btn.danger {
-            background: linear-gradient(to bottom, #faa 0%, #e33 50%, #c00 51%, #e33 100%);
-            border-color: #900; color: white; width: 60px;
-        }
+    @media (max-width: 480px) {
+        .call-controls { gap: 5px; padding: 5px; }
+        .ctrl-btn { width: 40px; height: 40px; font-size: 16px; }
+        .ctrl-btn.danger { width: 50px; }
+        .video-local { width: 100px; height: 130px; bottom: 80px; right: 10px; }
+        .menu-buttons-row { flex-direction: column; }
+    }
 
-        @media (max-width: 480px) {
-            .call-controls { gap: 5px; padding: 5px; }
-            .ctrl-btn { width: 40px; height: 40px; font-size: 16px; }
-            .ctrl-btn.danger { width: 50px; }
-            .video-local { width: 100px; height: 130px; bottom: 80px; right: 10px; }
-            .menu-buttons-row { flex-direction: column; }
-        }
-
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-    </style>
-</head>
-<body>
-    <div class="aero-window" id="mainWindow">
-        <div class="title-bar">
-            <div class="title">📱 Windows 7 Skype</div>
-            <div class="controls">
-                <button class="win-btn" style="background: linear-gradient(to bottom, #f0f0f0, #ccc);"></button>
-                <button class="win-btn close" onclick="window.close()"></button>
-            </div>
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes popIn { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+</style>
+```
+📱 Windows 7 Skype
+```
+    <div class="content-area" id="menuScreen">
+        <h2>Ваш профиль</h2>
+        <div class="id-box">
+            <p>Твой постоянный ID:</p>
+            <div class="my-id" id="myIdDisplay">0000</div>
         </div>
         
-        <div class="content-area" id="menuScreen">
-            <h2>Ваш профиль</h2>
-            <div class="id-box">
-                <p>Твой постоянный ID:</p>
-                <div class="my-id" id="myIdDisplay">0000</div>
-            </div>
-            
-            <div class="status success" id="status">В сети. Ожидание вызовов...</div>
-            <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
-            
-            <div class="menu-buttons-row">
-                <button class="glossy-btn green" id="connectBtn" style="border-color: #7fbf7f;">📞 Обычный звонок</button>
-                <button class="glossy-btn" id="connectScreenBtn">🖥️ Звонок (Экран)</button>
-            </div>
-            
-            <button class="glossy-btn" id="initMediaBtn" style="margin-bottom: 15px;">⚙️ Настройки устройств</button>
-            
-            <div class="settings-panel" id="settingsPanel">
-                <label>Видеокамера:</label>
-                <select id="videoSource"></select>
-                <label>Микрофон:</label>
-                <select id="audioSource"></select>
-                <button class="glossy-btn green" id="applySettingsBtn" style="margin-top: 5px;">💾 Применить</button>
-            </div>
-
-            <div class="incoming-box" id="incomingCall">
-                <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
-                <div class="action-buttons">
-                    <button class="glossy-btn green" id="answerBtn">Принять</button>
-                    <button class="glossy-btn red" id="rejectBtn">Отклонить</button>
-                </div>
-            </div>
+        <div class="status success" id="status">В сети. Ожидание вызовов...</div>
+        <input type="text" id="remoteId" placeholder="ID друга (4 цифры)" maxlength="4" />
+        
+        <div class="menu-buttons-row">
+            <button class="glossy-btn green" id="connectBtn" style="border-color: #7fbf7f;">📞 Обычный звонок</button>
+            <button class="glossy-btn" id="connectScreenBtn">🖥️ Звонок (Экран)</button>
+        </div>
+        
+        <button class="glossy-btn" id="initMediaBtn" style="margin-bottom: 15px;">⚙️ Настройки устройств</button>
+        
+        <div class="settings-panel" id="settingsPanel">
+            <label>Видеокамера:</label>
+            <select id="videoSource"></select>
+            <label>Микрофон:</label>
+            <select id="audioSource"></select>
+            <button class="glossy-btn green" id="applySettingsBtn" style="margin-top: 5px;">💾 Применить</button>
         </div>
 
-        <div id="callScreen">
-            <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
-            <video id="localVideo" class="video-local" autoplay muted playsinline></video>
-            
-            <div class="call-controls">
-                <button class="ctrl-btn" id="toggleMicBtn" title="Микрофон">🎤</button>
-                <button class="ctrl-btn" id="toggleCamBtn" title="Камера">📷</button>
-                <button class="ctrl-btn" id="flipCamBtn" title="Повернуть камеру">🔄</button>
-                <button class="ctrl-btn" id="shareScreenBtn" title="Трансляция экрана">🖥️</button>
-                <button class="ctrl-btn" id="togglePipBtn" title="Скрыть себя">👁️</button>
-                <button class="ctrl-btn" id="fullscreenBtn" title="Полный экран">⛶</button>
-                <button class="ctrl-btn danger" id="leaveCallBtn" title="Завершить">📞</button>
+        <div class="incoming-box" id="incomingCall">
+            <p>📞 Входящий: <strong id="callerIdDisplay">...</strong></p>
+            <div class="action-buttons">
+                <button class="glossy-btn green" id="answerBtn">Принять</button>
+                <button class="glossy-btn red" id="rejectBtn">Отклонить</button>
             </div>
         </div>
     </div>
 
-    <script>
-        // --- 1. FIREBASE ИНИЦИАЛИЗАЦИЯ ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
-            authDomain: "skype7q.firebaseapp.com",
-            databaseURL: "https://skype7q-default-rtdb.firebaseio.com",
-            projectId: "skype7q"
-        };
-        if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
-        const db = firebase.database();
-
-        let myId = localStorage.getItem('my_skype_id');
-        if (!myId) {
-            myId = Math.floor(1000 + Math.random() * 9000).toString();
-            localStorage.setItem('my_skype_id', myId);
-        }
-        document.getElementById('myIdDisplay').textContent = myId;
-        db.ref(`calls/${myId}`).remove(); 
-
-        // --- 2. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И ПОТОКИ ---
-        const localStream = new MediaStream();
-        const remoteStream = new MediaStream();
+    <div id="callScreen">
+        <video id="remoteVideo" class="video-remote" autoplay playsinline></video>
+        <video id="localVideo" class="video-local" autoplay muted playsinline></video>
         
-        document.getElementById('localVideo').srcObject = localStream;
-        document.getElementById('remoteVideo').srcObject = remoteStream;
+        <div class="call-controls">
+            <button class="ctrl-btn" id="toggleMicBtn" title="Микрофон">🎤</button>
+            <button class="ctrl-btn" id="toggleCamBtn" title="Камера">📷</button>
+            <button class="ctrl-btn" id="flipCamBtn" title="Повернуть камеру">🔄</button>
+            <button class="ctrl-btn" id="shareScreenBtn" title="Трансляция экрана">🖥️</button>
+            <button class="ctrl-btn" id="togglePipBtn" title="Скрыть себя">👁️</button>
+            <button class="ctrl-btn" id="fullscreenBtn" title="Полный экран">⛶</button>
+            <button class="ctrl-btn danger" id="leaveCallBtn" title="Завершить">📞</button>
+        </div>
+    </div>
+</div>
 
-        let peerConnection = null;
-        let inCall = false;
-        let callRole = null; 
-        let currentCallRef = null;
-        let incomingOfferData = null;
+<script>
+    // --- 1. FIREBASE ИНИЦИАЛИЗАЦИЯ ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyB2_1QSx32s7EpymuHZ0UzmHur4sSEiTvQ",
+        authDomain: "skype7q.firebaseapp.com",
+        databaseURL: "https://skype7q-default-rtdb.firebaseio.com",
+        projectId: "skype7q"
+    };
+    if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+    const db = firebase.database();
+
+    let myId = localStorage.getItem('my_skype_id');
+    if (!myId) {
+        myId = Math.floor(1000 + Math.random() * 9000).toString();
+        localStorage.setItem('my_skype_id', myId);
+    }
+    document.getElementById('myIdDisplay').textContent = myId;
+    db.ref(`calls/${myId}`).remove(); 
+
+    // --- 2. ВЕЧНЫЕ ПОТОКИ ---
+    const localStream = new MediaStream();
+    const remoteStream = new MediaStream();
+    
+    document.getElementById('localVideo').srcObject = localStream;
+    document.getElementById('remoteVideo').srcObject = remoteStream;
+
+    let peerConnection = null;
+    let inCall = false;
+    let callRole = null; 
+    let currentCallRef = null;
+    let incomingOfferData = null;
+    
+    let isAudioEnabled = true;
+    let isVideoEnabled = true;
+    let isScreenSharing = false;
+    let isPipVisible = true;
+    let savedCameraTrack = null; 
+    let currentFacingMode = 'user';
+
+    const stunServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+
+    function updateStatus(msg, type = 'success') {
+        const el = document.getElementById('status');
+        el.textContent = msg; el.className = 'status ' + type;
+    }
+
+    function updateTransceivers() {
+        if (!peerConnection) return;
+        const audioTrack = localStream.getAudioTracks()[0] || null;
+        const videoTrack = localStream.getVideoTracks()[0] || null;
+
+        const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
+        if (audioTransceiver) audioTransceiver.sender.replaceTrack(audioTrack);
         
-        let isAudioEnabled = true;
-        let isVideoEnabled = true;
-        let isScreenSharing = false;
-        let isPipVisible = true;
-        let savedCameraTrack = null; 
-        let currentFacingMode = 'user';
-        
-        // Очередь для правильной обработки кандидатов
-        let remoteCandidatesQueue = []; 
-        let hasAnswered = false;
+        const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
+        if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
+    }
 
-        const stunServers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
-
-        function updateStatus(msg, type = 'success') {
-            const el = document.getElementById('status');
-            el.textContent = msg; el.className = 'status ' + type;
-        }
-
-        function updateTransceivers() {
-            if (!peerConnection) return;
-            const audioTrack = localStream.getAudioTracks()[0] || null;
-            const videoTrack = localStream.getVideoTracks()[0] || null;
-
-            const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-            if (audioTransceiver) audioTransceiver.sender.replaceTrack(audioTrack);
+    // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И ОПТИМИЗАЦИЯ ---
+    async function getDevices() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoSelect = document.getElementById('videoSource');
+            const audioSelect = document.getElementById('audioSource');
+            const prevVideo = videoSelect.value;
+            const prevAudio = audioSelect.value;
             
-            const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-            if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
-        }
-
-        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА ---
-        async function getDevices() {
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoSelect = document.getElementById('videoSource');
-                const audioSelect = document.getElementById('audioSource');
-                const prevVideo = videoSelect.value;
-                const prevAudio = audioSelect.value;
-                
-                videoSelect.innerHTML = ''; audioSelect.innerHTML = '';
-                
-                devices.forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    if (device.kind === 'videoinput') {
-                        option.text = device.label || `Камера ${videoSelect.length + 1}`;
-                        videoSelect.appendChild(option);
-                    } else if (device.kind === 'audioinput') {
-                        option.text = device.label || `Микрофон ${audioSelect.length + 1}`;
-                        audioSelect.appendChild(option);
-                    }
-                });
-                if (prevVideo) videoSelect.value = prevVideo;
-                if (prevAudio) audioSelect.value = prevAudio;
-                
-                const panel = document.getElementById('settingsPanel');
-                if (panel.style.display !== 'block') {
-                    panel.style.display = 'block';
-                }
-            } catch (e) {
-                console.error("Ошибка получения устройств", e);
-            }
-        }
-
-        async function startMedia() {
-            const videoId = document.getElementById('videoSource').value;
-            const audioId = document.getElementById('audioSource').value;
+            videoSelect.innerHTML = ''; audioSelect.innerHTML = '';
             
-            localStream.getTracks().forEach(t => t.stop());
-            localStream.getTracks().forEach(t => localStream.removeTrack(t));
-
-            let constraints = {
-                audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
-                video: videoId 
-                    ? { deviceId: { exact: videoId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } } 
-                    : { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }
-            };
-
-            try {
-                const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-                
-                newStream.getTracks().forEach(t => {
-                    if (t.kind === 'video') t.contentHint = 'motion';
-                    localStream.addTrack(t);
-                });
-                
-                document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
-                
-                localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
-                localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
-                
-                updateTransceivers();
-
-                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
-                updateStatus('Устройства успешно подключены', 'success');
-                
-                if (document.getElementById('videoSource').options.length === 0) {
-                    await getDevices();
+            devices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                if (device.kind === 'videoinput') {
+                    option.text = device.label || `Камера ${videoSelect.length + 1}`;
+                    videoSelect.appendChild(option);
+                } else if (device.kind === 'audioinput') {
+                    option.text = device.label || `Микрофон ${audioSelect.length + 1}`;
+                    audioSelect.appendChild(option);
                 }
-            } catch (e) {
-                console.warn("Камера недоступна или занята, пробуем только звук", e);
-                try {
-                    const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    audioStream.getTracks().forEach(t => localStream.addTrack(t));
-                    updateTransceivers();
-                    updateStatus('Подключен только микрофон', 'warning');
-                    if (document.getElementById('videoSource').options.length === 0) await getDevices();
-                } catch (err) {
-                    console.log('Нет доступа к устройствам');
-                }
-            }
-        }
-
-        document.getElementById('initMediaBtn').onclick = async () => {
+            });
+            if (prevVideo) videoSelect.value = prevVideo;
+            if (prevAudio) audioSelect.value = prevAudio;
+            
             const panel = document.getElementById('settingsPanel');
-            if (panel.style.display === 'block') {
-                panel.style.display = 'none';
-            } else {
-                await startMedia();
+            if (panel.style.display !== 'block') {
+                panel.style.display = 'block';
             }
+        } catch (e) {
+            console.error("Ошибка получения устройств", e);
+        }
+    }
+
+    async function startMedia() {
+        const videoId = document.getElementById('videoSource').value;
+        const audioId = document.getElementById('audioSource').value;
+        
+        localStream.getTracks().forEach(t => t.stop());
+        localStream.getTracks().forEach(t => localStream.removeTrack(t));
+
+        // ОПТИМИЗАЦИЯ: Жесткие лимиты на разрешение и FPS, чтобы не вешать браузер
+        let constraints = {
+            audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
+            video: videoId 
+                ? { deviceId: { exact: videoId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } } 
+                : { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }
         };
 
-        document.getElementById('applySettingsBtn').onclick = () => {
-            if (isScreenSharing) {
-                alert("Остановите трансляцию экрана для смены камеры");
-                return;
-            }
-            startMedia();
-        };
-
-        // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА ---
-        document.getElementById('toggleMicBtn').onclick = () => {
-            if (localStream.getAudioTracks().length > 0) {
-                isAudioEnabled = !isAudioEnabled;
-                localStream.getAudioTracks()[0].enabled = isAudioEnabled;
-                document.getElementById('toggleMicBtn').classList.toggle('off', !isAudioEnabled);
-            }
-        };
-
-        document.getElementById('toggleCamBtn').onclick = () => {
-            if (localStream.getVideoTracks().length > 0) {
-                isVideoEnabled = !isVideoEnabled;
-                localStream.getVideoTracks()[0].enabled = isVideoEnabled;
-                document.getElementById('toggleCamBtn').classList.toggle('off', !isVideoEnabled);
-            }
-        };
-
-        document.getElementById('flipCamBtn').onclick = async () => {
-            if (isScreenSharing) return alert("Остановите показ экрана");
-            document.getElementById('videoSource').value = ''; 
-            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            await startMedia();
-        };
-
-        document.getElementById('togglePipBtn').onclick = () => {
-            isPipVisible = !isPipVisible;
-            if (!isScreenSharing) {
-                document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-            }
-            document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
-        };
-
-        document.getElementById('fullscreenBtn').onclick = () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => console.log(err));
-                document.getElementById('fullscreenBtn').classList.add('off');
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                    document.getElementById('fullscreenBtn').classList.remove('off');
+        try {
+            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            newStream.getTracks().forEach(t => {
+                if (t.kind === 'video') {
+                    t.contentHint = 'motion'; // ОПТИМИЗАЦИЯ: Делаем видео с камеры максимально плавным
                 }
-            }
-        };
+                localStream.addTrack(t);
+            });
+            
+            document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
+            
+            localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
+            localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
+            
+            updateTransceivers();
 
-        async function startScreenShareLogic() {
-            if (isScreenSharing) return true;
+            document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+            updateStatus('Устройства успешно подключены', 'success');
+            
+            if (document.getElementById('videoSource').options.length === 0) {
+                await getDevices();
+            }
+        } catch (e) {
+            console.warn("Камера недоступна или занята, пробуем только звук", e);
             try {
-                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } } });
-                const screenTrack = screenStream.getVideoTracks()[0];
-                screenTrack.contentHint = 'detail';
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
                 
-                savedCameraTrack = localStream.getVideoTracks()[0]; 
-                if (savedCameraTrack) localStream.removeTrack(savedCameraTrack); 
-                localStream.addTrack(screenTrack); 
-                
+                audioStream.getTracks().forEach(t => localStream.addTrack(t));
                 updateTransceivers();
                 
-                document.getElementById('localVideo').style.display = 'none'; 
-                document.getElementById('localVideo').style.transform = 'none'; 
-                
-                isScreenSharing = true;
-                document.getElementById('shareScreenBtn').classList.add('off'); 
-                
-                screenTrack.onended = () => stopScreenShare();
-                return true;
-            } catch (e) {
-                console.error("Трансляция экрана отменена", e);
-                return false;
+                updateStatus('Подключен только микрофон', 'warning');
+                if (document.getElementById('videoSource').options.length === 0) await getDevices();
+            } catch (err) {
+                alert('Нет доступа к устройствам');
             }
         }
+    }
 
-        document.getElementById('shareScreenBtn').onclick = async () => {
-            if (isScreenSharing) {
-                stopScreenShare();
-            } else {
-                await startScreenShareLogic();
+    document.getElementById('initMediaBtn').onclick = async () => {
+        const panel = document.getElementById('settingsPanel');
+        if (panel.style.display === 'block') {
+            panel.style.display = 'none';
+        } else {
+            await startMedia();
+        }
+    };
+
+    document.getElementById('applySettingsBtn').onclick = () => {
+        if (isScreenSharing) {
+            alert("Остановите трансляцию экрана для смены камеры");
+            return;
+        }
+        startMedia();
+    };
+
+    // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА ---
+    document.getElementById('toggleMicBtn').onclick = () => {
+        if (localStream.getAudioTracks().length > 0) {
+            isAudioEnabled = !isAudioEnabled;
+            localStream.getAudioTracks()[0].enabled = isAudioEnabled;
+            document.getElementById('toggleMicBtn').classList.toggle('off', !isAudioEnabled);
+        }
+    };
+
+    document.getElementById('toggleCamBtn').onclick = () => {
+        if (localStream.getVideoTracks().length > 0) {
+            isVideoEnabled = !isVideoEnabled;
+            localStream.getVideoTracks()[0].enabled = isVideoEnabled;
+            document.getElementById('toggleCamBtn').classList.toggle('off', !isVideoEnabled);
+        }
+    };
+
+    document.getElementById('flipCamBtn').onclick = async () => {
+        if (isScreenSharing) return alert("Остановите показ экрана");
+        document.getElementById('videoSource').value = ''; 
+        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        await startMedia();
+    };
+
+    document.getElementById('togglePipBtn').onclick = () => {
+        isPipVisible = !isPipVisible;
+        if (!isScreenSharing) {
+            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+        }
+        document.getElementById('togglePipBtn').classList.toggle('off', !isPipVisible);
+    };
+
+    document.getElementById('fullscreenBtn').onclick = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => console.log(err));
+            document.getElementById('fullscreenBtn').classList.add('off');
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+                document.getElementById('fullscreenBtn').classList.remove('off');
+            }
+        }
+    };
+
+    // Логика захвата экрана
+    async function startScreenShareLogic() {
+        if (isScreenSharing) return true;
+        try {
+            // ОПТИМИЗАЦИЯ: Захватываем экран с нормальным FPS
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30, max: 30 } } });
+            const screenTrack = screenStream.getVideoTracks()[0];
+            screenTrack.contentHint = 'detail'; // Подсказка для браузера - держать качество текста
+            
+            savedCameraTrack = localStream.getVideoTracks()[0]; 
+            
+            if (savedCameraTrack) {
+                localStream.removeTrack(savedCameraTrack); 
+            }
+            localStream.addTrack(screenTrack); 
+            
+            updateTransceivers();
+            
+            // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Полностью скрываем маленькое окошко на время трансляции
+            document.getElementById('localVideo').style.display = 'none'; 
+            document.getElementById('localVideo').style.transform = 'none'; 
+            
+            isScreenSharing = true;
+            document.getElementById('shareScreenBtn').classList.add('off'); 
+            
+            screenTrack.onended = () => stopScreenShare();
+            return true;
+        } catch (e) {
+            console.error("Трансляция экрана отменена", e);
+            return false;
+        }
+    }
+
+    document.getElementById('shareScreenBtn').onclick = async () => {
+        if (isScreenSharing) {
+            stopScreenShare();
+        } else {
+            await startScreenShareLogic();
+        }
+    };
+
+    function stopScreenShare() {
+        if (!isScreenSharing) return;
+        
+        const currentVideoTrack = localStream.getVideoTracks()[0];
+        if (currentVideoTrack) {
+            currentVideoTrack.stop();
+            localStream.removeTrack(currentVideoTrack);
+        }
+        
+        if (savedCameraTrack) {
+            localStream.addTrack(savedCameraTrack);
+            savedCameraTrack = null;
+            const videoId = document.getElementById('videoSource').value;
+            document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+        }
+        
+        updateTransceivers();
+        
+        // ИСПРАВЛЕНИЕ ЗАВИСШЕГО PiP: Возвращаем окошко обратно (если оно не было выключено кнопкой)
+        document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+        
+        isScreenSharing = false;
+        document.getElementById('shareScreenBtn').classList.remove('off');
+    }
+
+    // --- 5. СОЗДАНИЕ PEER CONNECTION ---
+    function createPeerConnection() {
+        peerConnection = new RTCPeerConnection(stunServers);
+
+        peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+        peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+
+        updateTransceivers();
+
+        peerConnection.ontrack = event => {
+            if (!remoteStream.getTracks().includes(event.track)) {
+                remoteStream.addTrack(event.track);
+            }
+            
+            const remoteVid = document.getElementById('remoteVideo');
+            if (remoteVid.paused) {
+                remoteVid.play().catch(e => console.warn(e));
             }
         };
 
-        function stopScreenShare() {
-            if (!isScreenSharing) return;
-            const currentVideoTrack = localStream.getVideoTracks()[0];
-            if (currentVideoTrack) {
-                currentVideoTrack.stop();
-                localStream.removeTrack(currentVideoTrack);
+        peerConnection.onicecandidate = event => {
+            if (event.candidate && currentCallRef) {
+                currentCallRef.child('candidates').child(callRole).push(event.candidate.toJSON());
             }
-            if (savedCameraTrack) {
-                localStream.addTrack(savedCameraTrack);
-                savedCameraTrack = null;
-                const videoId = document.getElementById('videoSource').value;
-                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
-            }
-            updateTransceivers();
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
-            isScreenSharing = false;
-            document.getElementById('shareScreenBtn').classList.remove('off');
-        }
+        };
 
-        // --- 5. СОЗДАНИЕ PEER CONNECTION И ОЧЕРЕДИ КАНДИДАТОВ ---
-        function addOrQueueCandidate(candidate) {
-            if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
-                peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
-            } else {
-                remoteCandidatesQueue.push(candidate);
-            }
-        }
-
-        function processCandidateQueue() {
-            if (!peerConnection || !peerConnection.remoteDescription) return;
-            while (remoteCandidatesQueue.length > 0) {
-                const candidate = remoteCandidatesQueue.shift();
-                peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => console.warn(e));
-            }
-        }
-
-        function createPeerConnection() {
-            peerConnection = new RTCPeerConnection(stunServers);
-
-            peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-            peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-
-            updateTransceivers();
-
-            peerConnection.ontrack = event => {
-                if (!remoteStream.getTracks().includes(event.track)) {
-                    remoteStream.addTrack(event.track);
-                }
-                const remoteVid = document.getElementById('remoteVideo');
-                if (remoteVid.paused) remoteVid.play().catch(e => console.warn(e));
-            };
-
-            peerConnection.onicecandidate = event => {
-                if (event.candidate && currentCallRef) {
-                    currentCallRef.child('candidates').child(callRole).push(event.candidate.toJSON());
-                }
-            };
-
-            peerConnection.onconnectionstatechange = () => {
-                // ИСПРАВЛЕНИЕ 3: Перестаем реагировать на "disconnected", т.к. это часто временно и обрывает звонок на хорошей связи
-                if (peerConnection && peerConnection.connectionState === 'failed') endCall();
-            };
-            peerConnection.oniceconnectionstatechange = () => {
-                if (peerConnection && peerConnection.iceConnectionState === 'failed') endCall();
-            };
-        }
-
-        // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
-        async function initiateCall(withScreenShare) {
-            const remoteId = document.getElementById('remoteId').value.trim();
-            if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
-
-            if (withScreenShare) {
-                const success = await startScreenShareLogic();
-                if (!success) return; 
-            } else if (localStream.getTracks().length === 0) {
-                // ИСПРАВЛЕНИЕ 4: Автоматически запрашиваем камеру/микрофон, если юзер не нажал шестеренку
-                await startMedia();
-            }
-            
-            inCall = true; callRole = 'caller';
-            hasAnswered = false;
-            remoteCandidatesQueue = [];
-            updateStatus('Дозвон...', 'warning');
-            
-            document.getElementById('menuScreen').style.display = 'none';
-            document.getElementById('mainWindow').classList.add('in-call');
-            document.getElementById('callScreen').style.display = 'flex';
-
-            currentCallRef = db.ref(`calls/${remoteId}`);
-            
-            // ИСПРАВЛЕНИЕ 1: Очищаем мусор от прошлых звонков ПЕРЕД началом нового, 
-            // чтобы старый answer не вызывал мгновенный краш.
-            await currentCallRef.remove(); 
-
-            createPeerConnection();
-
-            // Безопасно слушаем кандидатов сразу, они отправятся в очередь
-            currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
-                const candidate = snapshot.val();
-                if (candidate) addOrQueueCandidate(candidate);
-            });
-
-            currentCallRef.child('answer').on('value', async snapshot => {
-                const answer = snapshot.val();
-                if (answer && !hasAnswered && peerConnection) {
-                    hasAnswered = true;
-                    try {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                        processCandidateQueue(); // Применяем накопленные в очереди ICE-кандидаты
-                    } catch (e) { console.error("Ошибка установки ответа", e); }
-                }
-            });
-
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            await currentCallRef.update({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
-            
-            currentCallRef.on('value', snap => {
-                if (!snap.exists() && inCall) endCall();
-            });
-        }
-
-        document.getElementById('connectBtn').onclick = () => initiateCall(false);
-        document.getElementById('connectScreenBtn').onclick = () => initiateCall(true);
-
-        // --- 7. ВХОДЯЩИЕ ЗВОНКИ ---
-        db.ref(`calls/${myId}`).on('value', snapshot => {
-            const data = snapshot.val();
-            if (data && data.offer && !inCall) {
-                incomingOfferData = data;
-                document.getElementById('callerIdDisplay').textContent = data.callerId;
-                document.getElementById('incomingCall').classList.add('active');
-                updateStatus('Входящий вызов...', 'warning');
-            } else if (!data) {
-                document.getElementById('incomingCall').classList.remove('active');
-                if (inCall && callRole === 'callee') {
-                    endCall();
-                } else if (!inCall) {
-                    updateStatus('В сети. Ожидание вызовов...', 'success');
-                }
-            }
-        });
-
-        document.getElementById('answerBtn').onclick = async () => {
-            if (localStream.getTracks().length === 0) {
-                await startMedia(); // Страховка: запрашиваем устройства, если пусто
-            }
-
-            document.getElementById('incomingCall').classList.remove('active');
-            inCall = true; callRole = 'callee';
-            hasAnswered = false;
-            remoteCandidatesQueue = [];
-            
-            document.getElementById('menuScreen').style.display = 'none';
-            document.getElementById('mainWindow').classList.add('in-call');
-            document.getElementById('callScreen').style.display = 'flex';
-
-            currentCallRef = db.ref(`calls/${myId}`);
-            createPeerConnection();
-
-            // ИСПРАВЛЕНИЕ 2: Подписываемся сразу и складываем "ранние" кандидаты в очередь
-            currentCallRef.child('candidates').child('caller').on('child_added', snapshot => {
-                const candidate = snapshot.val();
-                if (candidate) addOrQueueCandidate(candidate);
-            });
-
-            try {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
-                processCandidateQueue(); // Опустошаем очередь после применения remoteDescription
-
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
-            } catch(e) {
-                console.error("Ошибка при ответе:", e);
+        peerConnection.onconnectionstatechange = () => {
+            if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
                 endCall();
             }
         };
+    }
 
-        document.getElementById('rejectBtn').onclick = () => {
-            db.ref(`calls/${myId}`).remove();
-            document.getElementById('incomingCall').classList.remove('active');
-            updateStatus('В сети', 'success');
-        };
+    // --- 6. ИСХОДЯЩИЙ ЗВОНОК ---
+    async function initiateCall(withScreenShare) {
+        const remoteId = document.getElementById('remoteId').value.trim();
+        if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
 
-        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
-        function endCall() {
-            if (isScreenSharing) stopScreenShare();
-            
-            if (document.fullscreenElement) {
-                document.exitFullscreen().catch(e => console.log(e));
-                document.getElementById('fullscreenBtn').classList.remove('off');
-            }
-            
-            if (peerConnection) { 
-                peerConnection.onicecandidate = null;
-                peerConnection.ontrack = null;
-                peerConnection.onconnectionstatechange = null;
-                peerConnection.oniceconnectionstatechange = null;
-                peerConnection.close(); 
-                peerConnection = null; 
-            }
-            
-            if (currentCallRef) { 
-                currentCallRef.child('answer').off();
-                currentCallRef.child('candidates').child('callee').off();
-                currentCallRef.child('candidates').child('caller').off();
-                currentCallRef.off(); 
-                currentCallRef.remove(); 
-                currentCallRef = null; 
-            }
-            
-            remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
-            
-            inCall = false; 
-            callRole = null; 
-            incomingOfferData = null;
-            remoteCandidatesQueue = []; // Очистка очереди
-
-            document.getElementById('callScreen').style.display = 'none';
-            document.getElementById('mainWindow').classList.remove('in-call');
-            document.getElementById('menuScreen').style.display = 'flex';
-            updateStatus('В сети. Ожидание вызовов...', 'success');
+        if (withScreenShare) {
+            const success = await startScreenShareLogic();
+            if (!success) return; 
         }
+        
+        inCall = true; callRole = 'caller';
+        updateStatus('Дозвон...', 'warning');
+        
+        document.getElementById('menuScreen').style.display = 'none';
+        document.getElementById('mainWindow').classList.add('in-call');
+        document.getElementById('callScreen').style.display = 'flex';
 
-        document.getElementById('leaveCallBtn').onclick = endCall;
+        currentCallRef = db.ref(`calls/${remoteId}`);
+        createPeerConnection();
 
-    </script>
-</body>
-</html>
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
+
+        currentCallRef.child('answer').on('value', async snapshot => {
+            const answer = snapshot.val();
+            if (answer && !peerConnection.currentRemoteDescription) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
+        });
+
+        currentCallRef.child('candidates').child('callee').on('child_added', snapshot => {
+            const candidate = snapshot.val();
+            if (candidate && peerConnection.remoteDescription) {
+                peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+        
+        currentCallRef.on('value', snap => {
+            if (!snap.exists() && inCall) endCall();
+        });
+    }
+
+    document.getElementById('connectBtn').onclick = () => initiateCall(false);
+    document.getElementById('connectScreenBtn').onclick = () => initiateCall(true);
+
+    // --- 7. ВХОДЯЩИЕ ЗВОНКИ ---
+    db.ref(`calls/${myId}`).on('value', snapshot => {
+        const data = snapshot.val();
+        if (data && data.offer && !inCall) {
+            incomingOfferData = data;
+            document.getElementById('callerIdDisplay').textContent = data.callerId;
+            document.getElementById('incomingCall').classList.add('active');
+            updateStatus('Входящий вызов...', 'warning');
+        } else if (!data) {
+            document.getElementById('incomingCall').classList.remove('active');
+            if (inCall && callRole === 'callee') {
+                endCall();
+            } else if (!inCall) {
+                updateStatus('В сети. Ожидание вызовов...', 'success');
+            }
+        }
+    });
+
+    document.getElementById('answerBtn').onclick = async () => {
+        document.getElementById('incomingCall').classList.remove('active');
+        inCall = true; callRole = 'callee';
+        
+        document.getElementById('menuScreen').style.display = 'none';
+        document.getElementById('mainWindow').classList.add('in-call');
+        document.getElementById('callScreen').style.display = 'flex';
+
+        currentCallRef = db.ref(`calls/${myId}`);
+        createPeerConnection();
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+
+        currentCallRef.child('candidates').child('caller').on('child_added', snapshot => {
+            const candidate = snapshot.val();
+            if (candidate) peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+    };
+
+    document.getElementById('rejectBtn').onclick = () => {
+        db.ref(`calls/${myId}`).remove();
+        document.getElementById('incomingCall').classList.remove('active');
+        updateStatus('В сети', 'success');
+    };
+
+    // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
+    function endCall() {
+        if (isScreenSharing) stopScreenShare();
+        
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(e => console.log(e));
+            document.getElementById('fullscreenBtn').classList.remove('off');
+        }
+        
+        if (peerConnection) { 
+            peerConnection.onicecandidate = null;
+            peerConnection.ontrack = null;
+            peerConnection.onconnectionstatechange = null;
+            peerConnection.close(); 
+            peerConnection = null; 
+        }
+        
+        if (currentCallRef) { 
+            currentCallRef.child('answer').off();
+            currentCallRef.child('candidates').child('callee').off();
+            currentCallRef.child('candidates').child('caller').off();
+            currentCallRef.off(); 
+            currentCallRef.remove(); 
+            currentCallRef = null; 
+        }
+        
+        remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
+        
+        inCall = false; 
+        callRole = null; 
+        incomingOfferData = null;
+
+        document.getElementById('callScreen').style.display = 'none';
+        document.getElementById('mainWindow').classList.remove('in-call');
+        document.getElementById('menuScreen').style.display = 'flex';
+        updateStatus('В сети. Ожидание вызовов...', 'success');
+    }
+
+    document.getElementById('leaveCallBtn').onclick = endCall;
+
+</script>
+```
