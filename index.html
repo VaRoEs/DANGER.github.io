@@ -263,7 +263,7 @@
         document.getElementById('myIdDisplay').textContent = myId;
         db.ref(`calls/${myId}`).remove(); 
 
-        // --- 2. ВЕЧНЫЕ ПОТОКИ И СЕРВЕРА ---
+        // --- 2. ПОТОКИ И СЕРВЕРА ---
         const localStream = new MediaStream();
         const remoteStream = new MediaStream();
         
@@ -283,7 +283,6 @@
         let savedCameraTrack = null; 
         let currentFacingMode = 'user';
 
-        // Базовые STUN сервера, к которым мы добавим TURN
         let rtcConfig = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' }, 
@@ -291,7 +290,6 @@
             ] 
         };
 
-        // Запрашиваем TURN сервера асинхронно
         async function fetchTurnServers() {
             try {
                 const response = await fetch("https://skype777.metered.live/api/v1/turn/credentials?apiKey=6c26af87858b38035e166101b92d654398c4");
@@ -302,26 +300,38 @@
                 console.warn("⚠️ Не удалось загрузить TURN сервера. Используем STUN fallback.", err);
             }
         }
-        fetchTurnServers(); // Вызываем сразу при загрузке страницы
+        fetchTurnServers();
 
         function updateStatus(msg, type = 'success') {
             const el = document.getElementById('status');
             el.textContent = msg; el.className = 'status ' + type;
         }
 
-        function updateTransceivers() {
+        // 🟢 ИСПРАВЛЕНИЕ: Универсальная функция правильной привязки видео- и аудио-треков
+        function attachMediaToPeer() {
             if (!peerConnection) return;
             const audioTrack = localStream.getAudioTracks()[0] || null;
             const videoTrack = localStream.getVideoTracks()[0] || null;
 
-            const audioTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'audio');
-            if (audioTransceiver) audioTransceiver.sender.replaceTrack(audioTrack);
-            
-            const videoTransceiver = peerConnection.getTransceivers().find(t => t.receiver.track.kind === 'video');
-            if (videoTransceiver) videoTransceiver.sender.replaceTrack(videoTrack);
+            if (callRole === 'caller' && peerConnection.getTransceivers().length === 0) {
+                // Если мы ЗВОНИМ, то мы создаем 2 канала (аудио и видео) первыми
+                peerConnection.addTransceiver(audioTrack || 'audio', { direction: 'sendrecv' });
+                peerConnection.addTransceiver(videoTrack || 'video', { direction: 'sendrecv' });
+            } else {
+                // Если мы ОТВЕЧАЕМ (или обновляем потоки в звонке), мы цепляем свое видео
+                // к тем каналам, которые пришли к нам от друга, а не создаем новые!
+                peerConnection.getTransceivers().forEach(t => {
+                    if (t.receiver.track.kind === 'audio' && audioTrack) {
+                        t.sender.replaceTrack(audioTrack);
+                    }
+                    if (t.receiver.track.kind === 'video' && videoTrack) {
+                        t.sender.replaceTrack(videoTrack);
+                    }
+                });
+            }
         }
 
-        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА И ОПТИМИЗАЦИЯ ---
+        // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА ---
         async function getDevices() {
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
@@ -362,7 +372,6 @@
             localStream.getTracks().forEach(t => t.stop());
             localStream.getTracks().forEach(t => localStream.removeTrack(t));
 
-            // ИСПРАВЛЕНИЕ: Снизили разрешение, чтобы предотвратить вылеты и переполнение буфера на слабых устройствах
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
                 video: videoId 
@@ -374,9 +383,7 @@
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
                 newStream.getTracks().forEach(t => {
-                    if (t.kind === 'video') {
-                        t.contentHint = 'motion'; 
-                    }
+                    if (t.kind === 'video') { t.contentHint = 'motion'; }
                     localStream.addTrack(t);
                 });
                 
@@ -385,7 +392,7 @@
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
-                updateTransceivers();
+                attachMediaToPeer(); // Обновляем потоки
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
                 updateStatus('Устройства успешно подключены', 'success');
@@ -399,7 +406,7 @@
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
                     
                     audioStream.getTracks().forEach(t => localStream.addTrack(t));
-                    updateTransceivers();
+                    attachMediaToPeer(); // Обновляем потоки
                     
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
@@ -484,7 +491,7 @@
                 }
                 localStream.addTrack(screenTrack); 
                 
-                updateTransceivers();
+                attachMediaToPeer(); // Обновляем трансляцию
                 
                 document.getElementById('localVideo').style.display = 'none'; 
                 document.getElementById('localVideo').style.transform = 'none'; 
@@ -524,7 +531,7 @@
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
             
-            updateTransceivers();
+            attachMediaToPeer(); // Возвращаем камеру
             
             document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
             
@@ -534,15 +541,10 @@
 
         // --- 5. СОЗДАНИЕ PEER CONNECTION ---
         function createPeerConnection() {
-            // Используем динамический конфиг, который уже стянул TURN сервера
             peerConnection = new RTCPeerConnection(rtcConfig);
 
-            peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-            peerConnection.addTransceiver('video', { direction: 'sendrecv' });
-
-            updateTransceivers();
-
             peerConnection.ontrack = event => {
+                // Если прилетел новый удаленный трек, добавляем его в remoteStream
                 if (!remoteStream.getTracks().includes(event.track)) {
                     remoteStream.addTrack(event.track);
                 }
@@ -584,11 +586,12 @@
             document.getElementById('callScreen').style.display = 'flex';
 
             currentCallRef = db.ref(`calls/${remoteId}`);
-            
-            // ИСПРАВЛЕНИЕ: Автоматически удаляем ветку, если юзер внезапно закрыл браузер!
             currentCallRef.onDisconnect().remove();
 
             createPeerConnection();
+            
+            // 🟢 ЗВОНЯЩИЙ СОЗДАЕТ КАНАЛЫ ДО ТОГО, КАК ОТПРАВИТЬ OFFER
+            attachMediaToPeer();
 
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
@@ -643,13 +646,16 @@
             document.getElementById('callScreen').style.display = 'flex';
 
             currentCallRef = db.ref(`calls/${myId}`);
-            
-            // ИСПРАВЛЕНИЕ: Автоудаление при обрыве
             currentCallRef.onDisconnect().remove();
 
             createPeerConnection();
 
+            // 🟢 ОТВЕЧАЮЩИЙ СНАЧАЛА ЗАДАЕТ РЕМОУТ ДЕСКРИПШЕН (чтобы WebRTC принял трубы от друга)
             await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
+            
+            // 🟢 А ТЕПЕРЬ ОТВЕЧАЮЩИЙ СУЕТ СВОИ ПОТОКИ В ПРИНЯТЫЕ ТРУБЫ
+            attachMediaToPeer();
+            
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
@@ -684,9 +690,7 @@
             }
             
             if (currentCallRef) { 
-                // Снимаем onDisconnect триггер, так как мы выходим штатно
                 currentCallRef.onDisconnect().cancel();
-                
                 currentCallRef.child('answer').off();
                 currentCallRef.child('candidates').child('callee').off();
                 currentCallRef.child('candidates').child('caller').off();
@@ -695,7 +699,6 @@
                 currentCallRef = null; 
             }
             
-            // ИСПРАВЛЕНИЕ: Остановка треков устраняет утечку памяти
             remoteStream.getTracks().forEach(t => {
                 t.stop(); 
                 remoteStream.removeTrack(t);
