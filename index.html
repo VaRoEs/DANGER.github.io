@@ -341,12 +341,13 @@
             }
         }
 
-        async function startMedia() {
+        // 🟢 ИСПРАВЛЕНИЕ: Добавлен аргумент force. Если force = true, код игнорирует ранний выход и принудительно меняет потоки!
+        async function startMedia(force = false) {
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            // Если уже есть треки, не сбрасываем их заново без нужды
-            if (localStream.getTracks().length > 0 && !videoId && !audioId) return;
+            // Если уже есть треки, и мы не требуем принудительной замены, не сбрасываем их заново
+            if (!force && localStream.getTracks().length > 0 && !videoId && !audioId) return;
 
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
@@ -390,6 +391,10 @@
                 console.warn("Камера недоступна или занята, пробуем только звук", e);
                 try {
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
+                    
+                    // Тоже глушим старые треки перед заменой на аудио-онли
+                    localStream.getTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
+
                     audioStream.getTracks().forEach(t => {
                         localStream.addTrack(t);
                         if (peerConnection) {
@@ -410,16 +415,17 @@
             if (panel.style.display === 'block') {
                 panel.style.display = 'none';
             } else {
-                await startMedia();
+                await startMedia(false);
             }
         };
 
+        // 🟢 ИСПРАВЛЕНИЕ: Передаем true, чтобы жестко применить настройки
         document.getElementById('applySettingsBtn').onclick = () => {
             if (isScreenSharing) {
                 alert("Остановите трансляцию экрана для смены камеры");
                 return;
             }
-            startMedia();
+            startMedia(true); 
         };
 
         // --- 4. УПРАВЛЕНИЕ ВО ВРЕМЯ ЗВОНКА ---
@@ -439,11 +445,12 @@
             }
         };
 
+        // 🟢 ИСПРАВЛЕНИЕ: Передаем true, чтобы жестко повернуть камеру
         document.getElementById('flipCamBtn').onclick = async () => {
             if (isScreenSharing) return alert("Остановите показ экрана");
             document.getElementById('videoSource').value = ''; 
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            await startMedia();
+            await startMedia(true);
         };
 
         document.getElementById('togglePipBtn').onclick = () => {
@@ -537,7 +544,6 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(rtcConfig);
 
-            // Добавляем все локальные треки прямо в коннекшн через стандартный addTrack
             localStream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, localStream);
             });
@@ -571,9 +577,8 @@
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
 
-            // Автоматически запускаем камеру, если юзер не нажимал настройки заранее
             if (localStream.getTracks().length === 0) {
-                await startMedia();
+                await startMedia(false);
             }
 
             if (withScreenShare) {
@@ -638,9 +643,8 @@
         });
 
         document.getElementById('answerBtn').onclick = async () => {
-            // Автоматически запускаем камеру при ответе, если не была включена
             if (localStream.getTracks().length === 0) {
-                await startMedia();
+                await startMedia(false);
             }
 
             document.getElementById('incomingCall').classList.remove('active');
