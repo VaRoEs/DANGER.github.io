@@ -357,53 +357,58 @@
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                // Очищаем старые треки локально
+                // 🟢 ТРЮК ИНДИАНЫ ДЖОНСА: Заменяем треки в соединении с другом ДО того, как убить текущие!
+                if (peerConnection) {
+                    newStream.getTracks().forEach(newTrack => {
+                        // Ищем нужный канал отправки
+                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === newTrack.kind);
+                        if (sender) {
+                            sender.replaceTrack(newTrack).catch(err => console.error("Ошибка замены трека", err));
+                        } else {
+                            peerConnection.addTrack(newTrack, localStream);
+                        }
+                    });
+                }
+
+                // 🟢 Только теперь безопасно убиваем старые треки (соединение уже питается новыми)
                 localStream.getTracks().forEach(t => {
                     t.stop();
                     localStream.removeTrack(t);
                 });
 
+                // Добавляем новые треки в наш локальный плеер
                 newStream.getTracks().forEach(t => {
                     if (t.kind === 'video') { t.contentHint = 'motion'; }
                     localStream.addTrack(t);
-                    
-                    if (peerConnection) {
-                        // 🟢 СЕКРЕТНЫЙ ИНГРЕДИЕНТ 1: Ищем трубу по принимающему треку (он есть всегда!)
-                        const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === t.kind);
-                        if (tr) {
-                            tr.sender.replaceTrack(t);
-                        } else {
-                            peerConnection.addTrack(t, localStream);
-                        }
-                    }
                 });
                 
                 document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
-                // 🟢 СЕКРЕТНЫЙ ИНГРЕДИЕНТ 2: Жестко "передергиваем" плеер, чтобы телефон не замораживал видео
                 const localVid = document.getElementById('localVideo');
                 localVid.srcObject = null;
                 localVid.srcObject = localStream;
-                
                 localVid.style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
-                updateStatus('Устройства успешно подключены', 'success');
                 
+                updateStatus('Устройства успешно подключены', 'success');
                 if (document.getElementById('videoSource').options.length === 0) await getDevices();
+                
             } catch (e) {
                 console.warn("Камера недоступна, пробуем только звук", e);
                 try {
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    localStream.getTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
+                    
+                    // Тот же трюк для перехода на аудио-only
+                    if (peerConnection) {
+                        audioStream.getTracks().forEach(newTrack => {
+                            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === newTrack.kind);
+                            if (sender) sender.replaceTrack(newTrack);
+                        });
+                    }
 
-                    audioStream.getTracks().forEach(t => {
-                        localStream.addTrack(t);
-                        if (peerConnection) {
-                            const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === t.kind);
-                            if (tr) tr.sender.replaceTrack(t);
-                        }
-                    });
+                    localStream.getTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
+                    audioStream.getTracks().forEach(t => localStream.addTrack(t));
                     
                     const localVid = document.getElementById('localVideo');
                     localVid.srcObject = null;
@@ -483,15 +488,18 @@
                 screenTrack.contentHint = 'detail'; 
                 
                 savedCameraTrack = localStream.getVideoTracks()[0]; 
+                
+                // Здесь тоже правильный порядок: сначала передаем трансляцию другу
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(screenTrack);
+                }
+                
+                // Только потом удаляем из локального превью
                 if (savedCameraTrack) {
                     localStream.removeTrack(savedCameraTrack); 
                 }
                 localStream.addTrack(screenTrack); 
-                
-                if (peerConnection) {
-                    const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === 'video');
-                    if (tr) tr.sender.replaceTrack(screenTrack);
-                }
                 
                 document.getElementById('localVideo').style.display = 'none'; 
                 document.getElementById('localVideo').style.transform = 'none'; 
@@ -519,17 +527,22 @@
             if (!isScreenSharing) return;
             
             const currentVideoTrack = localStream.getVideoTracks()[0];
+            
+            // Возвращаем камеру другу
+            if (savedCameraTrack && peerConnection) {
+                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(savedCameraTrack);
+            }
+            
+            // Убиваем трансляцию
             if (currentVideoTrack) {
                 currentVideoTrack.stop();
                 localStream.removeTrack(currentVideoTrack);
             }
             
+            // Возвращаем камеру в локальный плеер
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
-                if (peerConnection) {
-                    const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === 'video');
-                    if (tr) tr.sender.replaceTrack(savedCameraTrack);
-                }
                 savedCameraTrack = null;
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
