@@ -297,7 +297,7 @@
                 rtcConfig.iceServers = [...rtcConfig.iceServers, ...meteredServers];
                 console.log("✅ TURN сервера успешно загружены!");
             } catch (err) {
-                console.warn("⚠️ Не удалось загрузить TURN сервера. Используем STUN fallback.", err);
+                console.warn("⚠️ Не удалось загрузить TURN сервера.", err);
             }
         }
         fetchTurnServers();
@@ -341,12 +341,10 @@
             }
         }
 
-        // 🟢 ИСПРАВЛЕНИЕ: Добавлен аргумент force. Если force = true, код игнорирует ранний выход и принудительно меняет потоки!
         async function startMedia(force = false) {
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            // Если уже есть треки, и мы не требуем принудительной замены, не сбрасываем их заново
             if (!force && localStream.getTracks().length > 0 && !videoId && !audioId) return;
 
             let constraints = {
@@ -359,7 +357,7 @@
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                // Очищаем старые треки локально перед добавлением новых
+                // Очищаем старые треки локально
                 localStream.getTracks().forEach(t => {
                     t.stop();
                     localStream.removeTrack(t);
@@ -369,39 +367,48 @@
                     if (t.kind === 'video') { t.contentHint = 'motion'; }
                     localStream.addTrack(t);
                     
-                    // Если звонок уже идет, подкидываем новый трек на лету
                     if (peerConnection) {
-                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === t.kind);
-                        if (sender) sender.replaceTrack(t);
+                        // 🟢 СЕКРЕТНЫЙ ИНГРЕДИЕНТ 1: Ищем трубу по принимающему треку (он есть всегда!)
+                        const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === t.kind);
+                        if (tr) {
+                            tr.sender.replaceTrack(t);
+                        } else {
+                            peerConnection.addTrack(t, localStream);
+                        }
                     }
                 });
                 
                 document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
-                
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
-
-                document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+                
+                // 🟢 СЕКРЕТНЫЙ ИНГРЕДИЕНТ 2: Жестко "передергиваем" плеер, чтобы телефон не замораживал видео
+                const localVid = document.getElementById('localVideo');
+                localVid.srcObject = null;
+                localVid.srcObject = localStream;
+                
+                localVid.style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
                 updateStatus('Устройства успешно подключены', 'success');
                 
-                if (document.getElementById('videoSource').options.length === 0) {
-                    await getDevices();
-                }
+                if (document.getElementById('videoSource').options.length === 0) await getDevices();
             } catch (e) {
-                console.warn("Камера недоступна или занята, пробуем только звук", e);
+                console.warn("Камера недоступна, пробуем только звук", e);
                 try {
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    
-                    // Тоже глушим старые треки перед заменой на аудио-онли
                     localStream.getTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
 
                     audioStream.getTracks().forEach(t => {
                         localStream.addTrack(t);
                         if (peerConnection) {
-                            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
-                            if (sender) sender.replaceTrack(t);
+                            const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === t.kind);
+                            if (tr) tr.sender.replaceTrack(t);
                         }
                     });
+                    
+                    const localVid = document.getElementById('localVideo');
+                    localVid.srcObject = null;
+                    localVid.srcObject = localStream;
+                    
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 } catch (err) {
@@ -419,12 +426,8 @@
             }
         };
 
-        // 🟢 ИСПРАВЛЕНИЕ: Передаем true, чтобы жестко применить настройки
         document.getElementById('applySettingsBtn').onclick = () => {
-            if (isScreenSharing) {
-                alert("Остановите трансляцию экрана для смены камеры");
-                return;
-            }
+            if (isScreenSharing) return alert("Остановите трансляцию экрана для смены камеры");
             startMedia(true); 
         };
 
@@ -445,7 +448,6 @@
             }
         };
 
-        // 🟢 ИСПРАВЛЕНИЕ: Передаем true, чтобы жестко повернуть камеру
         document.getElementById('flipCamBtn').onclick = async () => {
             if (isScreenSharing) return alert("Остановите показ экрана");
             document.getElementById('videoSource').value = ''; 
@@ -481,15 +483,14 @@
                 screenTrack.contentHint = 'detail'; 
                 
                 savedCameraTrack = localStream.getVideoTracks()[0]; 
-                
                 if (savedCameraTrack) {
                     localStream.removeTrack(savedCameraTrack); 
                 }
                 localStream.addTrack(screenTrack); 
                 
                 if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(screenTrack);
+                    const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === 'video');
+                    if (tr) tr.sender.replaceTrack(screenTrack);
                 }
                 
                 document.getElementById('localVideo').style.display = 'none'; 
@@ -526,15 +527,18 @@
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
                 if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(savedCameraTrack);
+                    const tr = peerConnection.getTransceivers().find(tr => tr.receiver && tr.receiver.track.kind === 'video');
+                    if (tr) tr.sender.replaceTrack(savedCameraTrack);
                 }
                 savedCameraTrack = null;
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
             
-            document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
+            const localVid = document.getElementById('localVideo');
+            localVid.srcObject = null;
+            localVid.srcObject = localStream;
+            localVid.style.display = isPipVisible ? 'block' : 'none';
             
             isScreenSharing = false;
             document.getElementById('shareScreenBtn').classList.remove('off');
