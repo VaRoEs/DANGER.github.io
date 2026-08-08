@@ -307,30 +307,6 @@
             el.textContent = msg; el.className = 'status ' + type;
         }
 
-        // 🟢 ИСПРАВЛЕНИЕ: Универсальная функция правильной привязки видео- и аудио-треков
-        function attachMediaToPeer() {
-            if (!peerConnection) return;
-            const audioTrack = localStream.getAudioTracks()[0] || null;
-            const videoTrack = localStream.getVideoTracks()[0] || null;
-
-            if (callRole === 'caller' && peerConnection.getTransceivers().length === 0) {
-                // Если мы ЗВОНИМ, то мы создаем 2 канала (аудио и видео) первыми
-                peerConnection.addTransceiver(audioTrack || 'audio', { direction: 'sendrecv' });
-                peerConnection.addTransceiver(videoTrack || 'video', { direction: 'sendrecv' });
-            } else {
-                // Если мы ОТВЕЧАЕМ (или обновляем потоки в звонке), мы цепляем свое видео
-                // к тем каналам, которые пришли к нам от друга, а не создаем новые!
-                peerConnection.getTransceivers().forEach(t => {
-                    if (t.receiver.track.kind === 'audio' && audioTrack) {
-                        t.sender.replaceTrack(audioTrack);
-                    }
-                    if (t.receiver.track.kind === 'video' && videoTrack) {
-                        t.sender.replaceTrack(videoTrack);
-                    }
-                });
-            }
-        }
-
         // --- 3. ИНИЦИАЛИЗАЦИЯ МЕДИА ---
         async function getDevices() {
             try {
@@ -369,8 +345,8 @@
             const videoId = document.getElementById('videoSource').value;
             const audioId = document.getElementById('audioSource').value;
             
-            localStream.getTracks().forEach(t => t.stop());
-            localStream.getTracks().forEach(t => localStream.removeTrack(t));
+            // Если уже есть треки, не сбрасываем их заново без нужды
+            if (localStream.getTracks().length > 0 && !videoId && !audioId) return;
 
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
@@ -382,17 +358,27 @@
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
+                // Очищаем старые треки локально перед добавлением новых
+                localStream.getTracks().forEach(t => {
+                    t.stop();
+                    localStream.removeTrack(t);
+                });
+
                 newStream.getTracks().forEach(t => {
                     if (t.kind === 'video') { t.contentHint = 'motion'; }
                     localStream.addTrack(t);
+                    
+                    // Если звонок уже идет, подкидываем новый трек на лету
+                    if (peerConnection) {
+                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === t.kind);
+                        if (sender) sender.replaceTrack(t);
+                    }
                 });
                 
                 document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
                 
                 localStream.getAudioTracks().forEach(t => t.enabled = isAudioEnabled);
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
-                
-                attachMediaToPeer(); // Обновляем потоки
 
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
                 updateStatus('Устройства успешно подключены', 'success');
@@ -404,10 +390,13 @@
                 console.warn("Камера недоступна или занята, пробуем только звук", e);
                 try {
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
-                    
-                    audioStream.getTracks().forEach(t => localStream.addTrack(t));
-                    attachMediaToPeer(); // Обновляем потоки
-                    
+                    audioStream.getTracks().forEach(t => {
+                        localStream.addTrack(t);
+                        if (peerConnection) {
+                            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                            if (sender) sender.replaceTrack(t);
+                        }
+                    });
                     updateStatus('Подключен только микрофон', 'warning');
                     if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 } catch (err) {
@@ -491,7 +480,10 @@
                 }
                 localStream.addTrack(screenTrack); 
                 
-                attachMediaToPeer(); // Обновляем трансляцию
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(screenTrack);
+                }
                 
                 document.getElementById('localVideo').style.display = 'none'; 
                 document.getElementById('localVideo').style.transform = 'none'; 
@@ -526,12 +518,14 @@
             
             if (savedCameraTrack) {
                 localStream.addTrack(savedCameraTrack);
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(savedCameraTrack);
+                }
                 savedCameraTrack = null;
                 const videoId = document.getElementById('videoSource').value;
                 document.getElementById('localVideo').style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
             }
-            
-            attachMediaToPeer(); // Возвращаем камеру
             
             document.getElementById('localVideo').style.display = isPipVisible ? 'block' : 'none';
             
@@ -543,8 +537,12 @@
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(rtcConfig);
 
+            // Добавляем все локальные треки прямо в коннекшн через стандартный addTrack
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+
             peerConnection.ontrack = event => {
-                // Если прилетел новый удаленный трек, добавляем его в remoteStream
                 if (!remoteStream.getTracks().includes(event.track)) {
                     remoteStream.addTrack(event.track);
                 }
@@ -573,6 +571,11 @@
             const remoteId = document.getElementById('remoteId').value.trim();
             if (!remoteId || remoteId === myId) return alert('Введите корректный ID');
 
+            // Автоматически запускаем камеру, если юзер не нажимал настройки заранее
+            if (localStream.getTracks().length === 0) {
+                await startMedia();
+            }
+
             if (withScreenShare) {
                 const success = await startScreenShareLogic();
                 if (!success) return; 
@@ -589,9 +592,6 @@
             currentCallRef.onDisconnect().remove();
 
             createPeerConnection();
-            
-            // 🟢 ЗВОНЯЩИЙ СОЗДАЕТ КАНАЛЫ ДО ТОГО, КАК ОТПРАВИТЬ OFFER
-            attachMediaToPeer();
 
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
@@ -638,6 +638,11 @@
         });
 
         document.getElementById('answerBtn').onclick = async () => {
+            // Автоматически запускаем камеру при ответе, если не была включена
+            if (localStream.getTracks().length === 0) {
+                await startMedia();
+            }
+
             document.getElementById('incomingCall').classList.remove('active');
             inCall = true; callRole = 'callee';
             
@@ -650,12 +655,7 @@
 
             createPeerConnection();
 
-            // 🟢 ОТВЕЧАЮЩИЙ СНАЧАЛА ЗАДАЕТ РЕМОУТ ДЕСКРИПШЕН (чтобы WebRTC принял трубы от друга)
             await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOfferData.offer));
-            
-            // 🟢 А ТЕПЕРЬ ОТВЕЧАЮЩИЙ СУЕТ СВОИ ПОТОКИ В ПРИНЯТЫЕ ТРУБЫ
-            attachMediaToPeer();
-            
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             await currentCallRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
