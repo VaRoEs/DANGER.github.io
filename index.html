@@ -561,6 +561,13 @@
             }
             
             inCall = true; callRole = 'caller';
+            
+            // Если остался старый peerConnection — убиваем его
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
             updateStatus('Дозвон...', 'warning');
             
             document.getElementById('menuScreen').style.display = 'none';
@@ -618,6 +625,12 @@
             document.getElementById('incomingCall').classList.remove('active');
             inCall = true; callRole = 'callee';
             
+            // Если остался старый peerConnection — убиваем его
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
             document.getElementById('menuScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.add('in-call');
             document.getElementById('callScreen').style.display = 'flex';
@@ -642,42 +655,77 @@
             updateStatus('В сети', 'success');
         };
 
-        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА ---
+        // --- 8. ЗАВЕРШЕНИЕ ЗВОНКА (ПОЛНОСТЬЮ ПЕРЕРАБОТАНА) ---
         function endCall() {
+            // 1. Останавливаем трансляцию экрана, если была
             if (isScreenSharing) stopScreenShare();
-            
+
+            // 2. Выходим из полноэкранного режима
             if (document.fullscreenElement) {
                 document.exitFullscreen().catch(e => console.log(e));
                 document.getElementById('fullscreenBtn').classList.remove('off');
             }
-            
-            if (peerConnection) { 
+
+            // 3. Закрываем peerConnection и убиваем все ссылки на него
+            if (peerConnection) {
                 peerConnection.onicecandidate = null;
                 peerConnection.ontrack = null;
                 peerConnection.onconnectionstatechange = null;
-                peerConnection.close(); 
-                peerConnection = null; 
+                peerConnection.close();
+                peerConnection = null;
             }
-            
-            if (currentCallRef) { 
+
+            // 4. Жёстко отписываемся от Firebase и удаляем данные
+            if (currentCallRef) {
                 currentCallRef.child('answer').off();
                 currentCallRef.child('candidates').child('callee').off();
                 currentCallRef.child('candidates').child('caller').off();
-                currentCallRef.off(); 
-                currentCallRef.remove(); 
-                currentCallRef = null; 
+                currentCallRef.off();
+                currentCallRef.remove();
+                currentCallRef = null;
             }
-            
-            remoteStream.getTracks().forEach(t => remoteStream.removeTrack(t));
-            
-            inCall = false; 
-            callRole = null; 
+
+            // 5. Очищаем remoteStream
+            remoteStream.getTracks().forEach(t => {
+                remoteStream.removeTrack(t);
+                t.stop();
+            });
+
+            // 6. Очищаем localStream (чтобы освободить камеру для следующего звонка)
+            localStream.getTracks().forEach(t => {
+                localStream.removeTrack(t);
+                t.stop();
+            });
+
+            // 7. Сбрасываем все флаги
+            inCall = false;
+            callRole = null;
             incomingOfferData = null;
 
+            // 8. Возвращаем интерфейс в исходное состояние
             document.getElementById('callScreen').style.display = 'none';
             document.getElementById('mainWindow').classList.remove('in-call');
             document.getElementById('menuScreen').style.display = 'flex';
             updateStatus('В сети. Ожидание вызовов...', 'success');
+
+            // 9. Перезапускаем слушатель входящих звонков, чтобы Firebase «забыла» о старом звонке
+            db.ref(`calls/${myId}`).off();
+            db.ref(`calls/${myId}`).on('value', snapshot => {
+                const data = snapshot.val();
+                if (data && data.offer && !inCall) {
+                    incomingOfferData = data;
+                    document.getElementById('callerIdDisplay').textContent = data.callerId;
+                    document.getElementById('incomingCall').classList.add('active');
+                    updateStatus('Входящий вызов...', 'warning');
+                } else if (!data) {
+                    document.getElementById('incomingCall').classList.remove('active');
+                    if (inCall && callRole === 'callee') {
+                        endCall();
+                    } else if (!inCall) {
+                        updateStatus('В сети. Ожидание вызовов...', 'success');
+                    }
+                }
+            });
         }
 
         document.getElementById('leaveCallBtn').onclick = endCall;
