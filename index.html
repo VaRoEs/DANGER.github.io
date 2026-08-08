@@ -347,6 +347,22 @@
             
             if (!force && localStream.getTracks().length > 0 && !videoId && !audioId) return;
 
+            // 🟢 РЕШЕНИЕ БАГА "АППАРАТНОГО ЛОКА":
+            // Перед запросом новой камеры мы полностью уничтожаем старую и даем телефону 200 мс "остыть".
+            // Это предотвращает зависание ОС при смене камер!
+            if (localStream.getTracks().length > 0) {
+                localStream.getTracks().forEach(t => {
+                    t.stop();
+                    localStream.removeTrack(t);
+                });
+                
+                const localVid = document.getElementById('localVideo');
+                localVid.srcObject = null; // Отключаем от плеера
+                
+                // Микро-пауза для снятия блокировки оборудования на смартфонах
+                await new Promise(r => setTimeout(r, 200)); 
+            }
+
             let constraints = {
                 audio: audioId ? { deviceId: { exact: audioId }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true },
                 video: videoId 
@@ -355,27 +371,21 @@
             };
 
             try {
+                // Теперь система гарантированно выдаст новую камеру без ошибки
                 const newStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                if (peerConnection) {
-                    newStream.getTracks().forEach(newTrack => {
-                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === newTrack.kind);
-                        if (sender) {
-                            sender.replaceTrack(newTrack).catch(err => console.error("Ошибка замены трека", err));
-                        } else {
-                            peerConnection.addTrack(newTrack, localStream);
-                        }
-                    });
-                }
-
-                localStream.getTracks().forEach(t => {
-                    t.stop();
-                    localStream.removeTrack(t);
-                });
-
                 newStream.getTracks().forEach(t => {
                     if (t.kind === 'video') { t.contentHint = 'motion'; }
                     localStream.addTrack(t);
+                    
+                    if (peerConnection) {
+                        const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === t.kind);
+                        if (sender) {
+                            sender.replaceTrack(t).catch(err => console.error("Ошибка замены трека", err));
+                        } else {
+                            peerConnection.addTrack(t, localStream);
+                        }
+                    }
                 });
                 
                 document.getElementById('localVideo').style.display = isPipVisible && !isScreenSharing ? 'block' : 'none';
@@ -383,14 +393,13 @@
                 localStream.getVideoTracks().forEach(t => t.enabled = isVideoEnabled);
                 
                 const localVid = document.getElementById('localVideo');
-                localVid.srcObject = null;
-                localVid.srcObject = localStream;
+                localVid.srcObject = localStream; // Подключаем новую
                 localVid.style.transform = (!videoId && currentFacingMode === 'user') ? 'scaleX(-1)' : 'none';
                 
                 updateStatus('Устройства успешно подключены', 'success');
                 if (document.getElementById('videoSource').options.length === 0) await getDevices();
                 
-                // 🟢 МАГИЯ "ПЕРЕСОЗДАНИЯ В ФОНЕ": Говорим серверу обновить SDP
+                // Триггерим фоновую ренегоциацию для плавного обновления потока у друга
                 if (inCall && currentCallRef) {
                     currentCallRef.child('triggerRenegotiation').set(Date.now());
                 }
@@ -400,18 +409,15 @@
                 try {
                     const audioStream = await navigator.mediaDevices.getUserMedia({ audio: audioId ? { deviceId: { exact: audioId } } : true, video: false });
                     
-                    if (peerConnection) {
-                        audioStream.getTracks().forEach(newTrack => {
-                            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === newTrack.kind);
-                            if (sender) sender.replaceTrack(newTrack);
-                        });
-                    }
-
-                    localStream.getTracks().forEach(t => { t.stop(); localStream.removeTrack(t); });
-                    audioStream.getTracks().forEach(t => localStream.addTrack(t));
+                    audioStream.getTracks().forEach(t => {
+                        localStream.addTrack(t);
+                        if (peerConnection) {
+                            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === t.kind);
+                            if (sender) sender.replaceTrack(t);
+                        }
+                    });
                     
                     const localVid = document.getElementById('localVideo');
-                    localVid.srcObject = null;
                     localVid.srcObject = localStream;
                     
                     updateStatus('Подключен только микрофон', 'warning');
@@ -421,7 +427,7 @@
                         currentCallRef.child('triggerRenegotiation').set(Date.now());
                     }
                 } catch (err) {
-                    alert('Нет доступа к устройствам');
+                    alert('Нет доступа к устройствам. Проверьте разрешения!');
                 }
             }
         }
@@ -459,9 +465,10 @@
 
         document.getElementById('flipCamBtn').onclick = async () => {
             if (isScreenSharing) return alert("Остановите показ экрана");
+            // Очищаем селект, чтобы применился facingMode
             document.getElementById('videoSource').value = ''; 
             currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            await startMedia(true);
+            await startMedia(true); // force = true заставит камеру перезапуститься
         };
 
         document.getElementById('togglePipBtn').onclick = () => {
@@ -575,7 +582,6 @@
                 }
                 
                 const remoteVid = document.getElementById('remoteVideo');
-                // 🟢 Жесткое переподключение плеера, чтобы видео на телефоне точно отвисло
                 remoteVid.srcObject = null;
                 remoteVid.srcObject = remoteStream;
                 
@@ -627,7 +633,6 @@
             await peerConnection.setLocalDescription(offer);
             await currentCallRef.set({ callerId: myId, offer: { type: offer.type, sdp: offer.sdp } });
 
-            // 🟢 Слушаем новые ответы (Answer) постоянно для Ренегоциации
             currentCallRef.child('answer').on('value', async snapshot => {
                 const answer = snapshot.val();
                 if (answer && peerConnection && peerConnection.signalingState === 'have-local-offer') {
@@ -637,7 +642,6 @@
                 }
             });
 
-            // 🟢 Звонящий слушает триггер на пересоздание соединения!
             currentCallRef.child('triggerRenegotiation').on('value', async snapshot => {
                 if (snapshot.exists() && peerConnection) {
                     try {
@@ -698,7 +702,6 @@
 
             createPeerConnection();
 
-            // 🟢 Отвечающий постоянно слушает новые Офферы для Ренегоциации
             currentCallRef.child('offer').on('value', async snapshot => {
                 const offer = snapshot.val();
                 if (offer && peerConnection && (peerConnection.signalingState === 'stable' || peerConnection.signalingState === 'have-remote-offer' || !peerConnection.currentRemoteDescription)) {
@@ -772,4 +775,3 @@
     </script>
 </body>
 </html>
-        
